@@ -42,7 +42,10 @@ async def send_notifications():
                     message += f"\n{product}: {quantity}"
 
                 full_message = f"{title}{message}"
-                await bot.send_message(user_id, full_message, parse_mode=types.ParseMode.MARKDOWN)
+                try:
+                    await bot.send_message(user_id, full_message, parse_mode=types.ParseMode.MARKDOWN)
+                except:
+                    pass
 
 
 async def on_start(message: types.Message):
