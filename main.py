@@ -8,6 +8,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from datetime import datetime, timedelta
 
+from free_whs_parser import send_request
+
 API_TOKEN = os.getenv('BOT_TOKEN')
 
 bot = Bot(token=API_TOKEN)
@@ -18,6 +20,7 @@ scheduler = AsyncIOScheduler()
 # user_ids = [615742233]
 
 user_ids_file = 'user_ids.txt'
+user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
 # Загружаем данные из файла
 
 
@@ -46,6 +49,16 @@ async def send_notifications():
                     await bot.send_message(user_id, full_message, parse_mode=types.ParseMode.MARKDOWN)
                 except:
                     pass
+
+
+async def send_free_whs():
+    data = send_request()
+
+    for user_id in user_ids_whs:
+        try:
+            await bot.send_message(user_id, data, parse_mode=types.ParseMode.MARKDOWN)
+        except:
+            pass
 
 
 async def on_start(message: types.Message):
@@ -77,5 +90,7 @@ if __name__ == '__main__':
     scheduler.add_job(send_notifications, 'cron', hour=9, minute=0)
     scheduler.add_job(send_notifications, 'cron', hour=14, minute=0)
     scheduler.add_job(send_notifications, 'cron', hour=17, minute=0)
+
+    scheduler.add_job(send_free_whs, 'interval', minutes=1)
 
     run_bot()
