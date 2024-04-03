@@ -79,15 +79,16 @@ def compare_reports(current_report):
 
 def load_previous_report():
     try:
-        with open(previous_report_file, 'r') as file:
+        with open(previous_report_file, 'r', encoding='utf-8') as file:
             return json.load(file)
     except FileNotFoundError:
         return None
 
 
+
 def save_current_report(current_report):
-    with open(previous_report_file, 'w') as file:
-        json.dump(current_report, file)
+    with open(previous_report_file, 'w', encoding='utf-8') as file:
+        json.dump(current_report, file, ensure_ascii=False)
 
 
 def filter_acceptance(report):
