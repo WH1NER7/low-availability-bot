@@ -4,7 +4,7 @@ import requests
 import json
 
 
-previous_report_file = "previous_report.txt"
+previous_report_file = "previous_report.json"
 
 
 def send_request():
@@ -91,7 +91,14 @@ def save_current_report(current_report):
 
 
 def filter_acceptance(report):
+    special_warehouses = [
+        "Коледино", "Новосибирск", "Хабаровск", "Подольск",
+        "Казань", "Электросталь", "Астана", "Белые столбы",
+        "Тула", "Пушкино", "Невинномысск", "Алматы Атакент",
+        "Санкт-Петербург (Уткина Заводь)", "Краснодар (Тихорецкая)",
+        "Екатеринбург - Испытателей 14г", "Екатеринбург - Перспективный 12/2"
+    ]
     if "result" in report:
-        return [item for item in report["result"]["report"] if item.get("acceptanceType") == 6]
+        return [item for item in report["result"]["report"] if item.get("acceptanceType") == 6 and item.get('warehouseName') in special_warehouses]
     else:
         return []
