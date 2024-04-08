@@ -33,7 +33,7 @@ def send_request():
 
     response = requests.post(url, json=payload, headers=headers)
     print(response.status_code)
-
+    print('раб работаю')
     if response.status_code == 200:
         current_report = response.json()
         return compare_reports(current_report)
