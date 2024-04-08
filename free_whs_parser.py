@@ -71,7 +71,6 @@ def compare_reports(current_report):
                         result_text += f"Дата: {formatted_date}\n"
                         result_text += f"ID Склада: {current_warehouse_id}\n"
                         result_text += f"Название склада: {current_item['warehouseName']}\n"
-                        result_text += f"Тип: {current_item['acceptanceType']}\n"
                         result_text += f"Предыдущий коэф.: {previous_coefficient}\n"
                         result_text += f"Текущий коэф.: {current_coefficient}\n"
                         result_text += "------------------------\n"
@@ -82,15 +81,15 @@ def compare_reports(current_report):
 
 def load_previous_report():
     try:
-        with open(previous_report_file, 'r', encoding='utf-8') as file:
+        with open(previous_report_file, 'r') as file:
             return json.load(file)
     except FileNotFoundError:
         return None
 
 
 def save_current_report(current_report):
-    with open(previous_report_file, 'w', encoding='utf-8') as file:
-        json.dump(current_report, file, ensure_ascii=False)
+    with open(previous_report_file, 'w') as file:
+        json.dump(current_report, file)
     print('Saved')
 
 
