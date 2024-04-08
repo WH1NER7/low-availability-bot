@@ -30,8 +30,10 @@ def send_request():
         "jsonrpc": "2.0",
         "id": "json-rpc_16"
     }
-    print('работаю')
+
     response = requests.post(url, json=payload, headers=headers)
+    print(response.status_code)
+
     if response.status_code == 200:
         current_report = response.json()
         return compare_reports(current_report)
@@ -69,10 +71,11 @@ def compare_reports(current_report):
                         result_text += f"Дата: {formatted_date}\n"
                         result_text += f"ID Склада: {current_warehouse_id}\n"
                         result_text += f"Название склада: {current_item['warehouseName']}\n"
+                        result_text += f"Тип: {current_item['acceptanceType']}\n"
                         result_text += f"Предыдущий коэф.: {previous_coefficient}\n"
                         result_text += f"Текущий коэф.: {current_coefficient}\n"
                         result_text += "------------------------\n"
-
+    print(result_text)
     save_current_report(current_report)
     return result_text
 
@@ -85,10 +88,10 @@ def load_previous_report():
         return None
 
 
-
 def save_current_report(current_report):
     with open(previous_report_file, 'w', encoding='utf-8') as file:
         json.dump(current_report, file, ensure_ascii=False)
+    print('Saved')
 
 
 def filter_acceptance(report):
@@ -99,6 +102,7 @@ def filter_acceptance(report):
         "Санкт-Петербург (Уткина Заводь)", "Краснодар (Тихорецкая)",
         "Екатеринбург - Испытателей 14г", "Екатеринбург - Перспективный 12/2"
     ]
+
     if "result" in report:
         return [item for item in report["result"]["report"] if item.get("acceptanceType") == 6 and item.get('warehouseName') in special_warehouses]
     else:

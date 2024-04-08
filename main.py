@@ -57,8 +57,8 @@ async def send_free_whs():
     for user_id in user_ids_whs:
         try:
             await bot.send_message(user_id, data, parse_mode=types.ParseMode.MARKDOWN)
-        except:
-            pass
+        except Exception as e:
+            print(e)
 
 
 async def on_start(message: types.Message):
