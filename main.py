@@ -54,11 +54,12 @@ async def send_notifications():
 async def send_free_whs():
     data = send_request()
 
-    for user_id in user_ids_whs:
-        try:
-            await bot.send_message(user_id, data, parse_mode=types.ParseMode.MARKDOWN)
-        except Exception as e:
-            print(e)
+    if data:
+        for user_id in user_ids_whs:
+            try:
+                await bot.send_message(user_id, data, parse_mode=types.ParseMode.MARKDOWN)
+            except Exception as e:
+                print(e)
 
 
 async def on_start(message: types.Message):
