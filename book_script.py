@@ -96,7 +96,7 @@ def check_warehouses(tasks, report):
     return matched_tasks
 
 
-def update_task_status():
+def update_task_status(collection):
     today = datetime.utcnow().date()
     tasks = list(collection.find({"status": "В процессе"}))
     for task in tasks:
@@ -111,53 +111,60 @@ def update_task_status():
 
 
 def book_wh():
-    try:
-        report = get_acceptance_coefficients()
-        update_task_status()
-        tasks = get_tasks_from_mongo()
-        matched_tasks = check_warehouses(tasks, report)
+    successful_bookings = []
+    errors = []
 
-        successful_bookings = []
-        errors = []
+    # Настройки для подключения к MongoDB
+    with MongoClient("mongodb://localhost:27017/") as client:
+        db = client.low_limits_bot
+        collection = db.book_tasks
 
-        for task in matched_tasks:
-            try:
-                supply_status, supply_id = process_supply(task.get('date'), task.get('warehouse_id'),
-                                                          task.get('file_name'), cookie)
-                if supply_status:
-                    task_details = collection.find_one({"_id": task['_id']})
-                    start_date = task_details['start_date']
-                    if isinstance(start_date, dict):
-                        start_date = start_date['$date']
-                    end_date = task_details['end_date']
-                    if isinstance(end_date, dict):
-                        end_date = end_date['$date']
-                    warehouse_name = task_details['warehouse_name']
+        try:
+            report = get_acceptance_coefficients()
+            update_task_status(collection)
+            tasks = get_tasks_from_mongo()
+            matched_tasks = check_warehouses(tasks, report)
 
-                    date_range = start_date
-                    if start_date != end_date:
-                        date_range = f"{start_date} - {end_date}"
+            for task in matched_tasks:
+                try:
+                    supply_status, supply_id = process_supply(task.get('date'), task.get('warehouse_id'),
+                                                              task.get('file_name'), cookie)
+                    if supply_status:
+                        task_details = collection.find_one({"_id": task['_id']})
+                        start_date = task_details['start_date']
+                        if isinstance(start_date, dict):
+                            start_date = start_date['$date']
+                        end_date = task_details['end_date']
+                        if isinstance(end_date, dict):
+                            end_date = end_date['$date']
+                        warehouse_name = task_details['warehouse_name']
 
-                    successful_booking = {
-                        "supply_id": supply_id,
-                        "date_range": date_range,
-                        "warehouse_name": warehouse_name,
-                        "user_ids": user_ids_whs
-                    }
-                    successful_bookings.append(successful_booking)
+                        date_range = start_date
+                        if start_date != end_date:
+                            date_range = f"{start_date} - {end_date}"
 
-                    collection.update_one(
-                        {"_id": task['_id']},
-                        {"$set": {"status": "Успешно завершена", "supply_id": supply_id}}
-                    )
-                    print(f"Successfully booked supply with ID: {supply_id}")
-                else:
-                    print(f"Booking failed for task: {task}")
-            except Exception as e:
-                error_message = f"Booking failed for task {task}: {e}"
-                errors.append(error_message)
-                print(error_message)
+                        successful_booking = {
+                            "supply_id": supply_id,
+                            "date_range": date_range,
+                            "warehouse_name": warehouse_name,
+                            "user_ids": user_ids_whs
+                        }
+                        successful_bookings.append(successful_booking)
 
-        return successful_bookings, errors
-    finally:
-        client.close()
+                        collection.update_one(
+                            {"_id": task['_id']},
+                            {"$set": {"status": "Успешно завершена", "supply_id": supply_id}}
+                        )
+                        print(f"Successfully booked supply with ID: {supply_id}")
+                    else:
+                        print(f"Booking failed for task: {task}")
+                except Exception as e:
+                    error_message = f"Booking failed for task {task}: {e}"
+                    errors.append(error_message)
+                    print(error_message)
+
+        except Exception as e:
+            errors.append(f"Failed to complete booking process: {e}")
+            print(f"Failed to complete booking process: {e}")
+
+    return successful_bookings, errors
