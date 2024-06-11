@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ContentTyp
 from aiogram.utils import executor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from bson import ObjectId
 from pymongo import MongoClient
@@ -108,7 +108,8 @@ async def on_start(message: types.Message):
 
 class BookFSM(StatesGroup):
     choose_date_range = State()
-    input_date_range = State()
+    input_start_date = State()
+    input_end_date = State()
     input_date = State()
     input_excel = State()
     choose_warehouse = State()
@@ -172,11 +173,13 @@ async def delete_booking_task(message: types.Message):
     # Создаем клавиатуру с вариантами задач для удаления
     keyboard = InlineKeyboardMarkup()
     for task in tasks:
+        start_date = task['start_date'].strftime('%Y-%m-%d')
+        end_date = task['end_date'].strftime('%Y-%m-%d')
         keyboard.add(InlineKeyboardButton(
-            f"{task['start_date']} - {task['end_date']} (Склад: {task['warehouse_name']})",
+            f"{start_date} - {end_date} (Склад: {task['warehouse_name']})",
             callback_data=str(task['_id'])
         ))
-    print(keyboard.values)
+
     await message.answer("Выберите задачу для удаления:", reply_markup=keyboard)
 
 
@@ -209,20 +212,87 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
     async with state.proxy() as data:
         data['date_type'] = callback_query.data
     if callback_query.data == 'range':
-        await BookFSM.input_date_range.set()
-        await bot.send_message(callback_query.from_user.id, "Введите дату в формате dd.mm.yyyy-dd.mm.yyyy")
+        await BookFSM.input_start_date.set()
+
+        # Generate inline keyboard with dates for the next 12 days
+        keyboard = InlineKeyboardMarkup(row_width=3)
+        current_date = datetime.now()
+        for i in range(12):
+            date = current_date + timedelta(days=i)
+            formatted_date = date.strftime('%d.%m.%Y')
+            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+
+        await bot.edit_message_text(
+            text="Выберите дату начала диапазона:",
+            chat_id=callback_query.from_user.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=keyboard
+        )
     else:
         await BookFSM.input_date.set()
-        await bot.send_message(callback_query.from_user.id, "Введите дату в формате dd.mm.yyyy")
+
+        # Generate inline keyboard with dates for the next 12 days
+        keyboard = InlineKeyboardMarkup(row_width=3)
+        current_date = datetime.now()
+        for i in range(12):
+            date = current_date + timedelta(days=i)
+            formatted_date = date.strftime('%d.%m.%Y')
+            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+
+        await bot.edit_message_text(
+            text="Выберите дату:",
+            chat_id=callback_query.from_user.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=keyboard
+        )
     await callback_query.answer()
 
 
-@dp.message_handler(lambda message: validate_date(message.text), state=[BookFSM.input_date_range, BookFSM.input_date])
+@dp.callback_query_handler(lambda c: c.data, state=BookFSM.input_start_date)
+async def process_start_date(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['start_date'] = callback_query.data
+
+    await BookFSM.input_end_date.set()
+
+    # Generate inline keyboard with dates for the next 12 days from the selected start date
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
+    for i in range(12):
+        date = start_date + timedelta(days=i)
+        formatted_date = date.strftime('%d.%m.%Y')
+        keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+
+    await bot.edit_message_text(
+        text="Выберите дату окончания диапазона:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=keyboard
+    )
+    await callback_query.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data, state=[BookFSM.input_end_date, BookFSM.input_date])
+async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['end_date'] = callback_query.data
+
+    await BookFSM.input_excel.set()
+    await bot.edit_message_text(
+        text="Пришлите Excel файл с товарами.",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id
+    )
+    await callback_query.answer()
+
+
+@dp.message_handler(lambda message: validate_date(message.text),
+                    state=[BookFSM.input_date, BookFSM.input_start_date, BookFSM.input_end_date])
 async def process_date(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['date'] = message.text
     await BookFSM.input_excel.set()
-    await message.answer("Пришлите Excel файл с товарами.")
+    await bot.send_message(message.chat.id, "Пришлите Excel файл с товарами.")
 
 
 @dp.message_handler(content_types=[ContentType.DOCUMENT], state=BookFSM.input_excel)
@@ -254,8 +324,9 @@ async def process_excel(message: types.Message, state: FSMContext):
             keyboard = InlineKeyboardMarkup()
             for warehouse in warehouses:
                 keyboard.add(InlineKeyboardButton(warehouse[0], callback_data=str(warehouse[1])))
+
             await BookFSM.choose_warehouse.set()
-            await message.answer("Выберите склад:", reply_markup=keyboard)
+            await bot.send_message(message.chat.id, "Выберите склад:", reply_markup=keyboard)
         else:
             await message.answer(
                 "Некорректный файл. Убедитесь, что он не пустой и содержит два столбца: баркод и количество.")
@@ -275,16 +346,17 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
 
     async with state.proxy() as data:
         date_type = data['date_type']
-        date = data['date']
         user_name = data['user_name']
         file_name = data['file_name']
 
         if date_type == "range":
-            start_date, end_date = date.split("-")
+            start_date, end_date = data['start_date'], data['end_date']
             start_date = datetime.strptime(start_date.strip(), '%d.%m.%Y')
             end_date = datetime.strptime(end_date.strip(), '%d.%m.%Y')
+            date_info = f"Тип бронирования: Диапазон\nДата начала: {start_date.strftime('%d.%m.%Y')}\nДата окончания: {end_date.strftime('%d.%m.%Y')}"
         else:
-            start_date = end_date = datetime.strptime(date.strip(), '%d.%m.%Y')
+            start_date = end_date = datetime.strptime(data['end_date'].strip(), '%d.%m.%Y')
+            date_info = f"Тип бронирования: Один день\nДата: {start_date.strftime('%d.%m.%Y')}"
 
         task_number = generate_random_number()  # Генерация случайного номера задачи
 
@@ -304,9 +376,15 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
         collection.insert_one(task)
         print(f"Задача создана: {task}")
 
-    await bot.send_message(callback_query.from_user.id, f"Задача на бронирование создана. Номер задачи: {task_number}")
+        await bot.edit_message_text(
+            text=f"Задача на бронирование создана.\nНомер задачи: {task_number}\n{date_info}\nСклад: {warehouse_name}",
+            chat_id=callback_query.from_user.id,
+            message_id=callback_query.message.message_id
+        )
+
     await state.finish()
     await callback_query.answer()
+
 
 
 async def notify_users(message, user_ids):
@@ -337,7 +415,7 @@ if __name__ == '__main__':
     scheduler.add_job(send_notifications, 'cron', hour=14, minute=0)
     scheduler.add_job(send_notifications, 'cron', hour=17, minute=0)
 
-    scheduler.add_job(send_free_whs, 'interval', minutes=2)
+    # scheduler.add_job(send_free_whs, 'interval', minutes=2)
     scheduler.add_job(send_booking_info, 'interval', seconds=30)
 
     run_bot()
