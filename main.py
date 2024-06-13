@@ -415,7 +415,7 @@ if __name__ == '__main__':
     scheduler.add_job(send_notifications, 'cron', hour=14, minute=0)
     scheduler.add_job(send_notifications, 'cron', hour=17, minute=0)
 
-    # scheduler.add_job(send_free_whs, 'interval', minutes=2)
+    scheduler.add_job(send_free_whs, 'interval', minutes=3)
     scheduler.add_job(send_booking_info, 'interval', seconds=30)
 
     run_bot()

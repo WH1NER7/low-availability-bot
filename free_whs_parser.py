@@ -120,4 +120,3 @@ def filter_acceptance(report):
     else:
         return []
 
-print(send_request())
