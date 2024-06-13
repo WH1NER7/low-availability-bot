@@ -19,6 +19,7 @@ from pymongo import MongoClient
 import openpyxl
 
 from book_script import book_wh
+from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
 
 API_TOKEN = os.getenv('BOT_TOKEN')
@@ -133,18 +134,30 @@ def validate_date(date_text):
         return False
 
 
-def validate_excel(file):
+def validate_excel(file_path):
     try:
-        workbook = openpyxl.load_workbook(file)
+        workbook = openpyxl.load_workbook(file_path)
         sheet = workbook.active
-        for row in sheet.iter_rows(min_row=2, max_col=2, values_only=True):
+        valid = True
+
+        for row in sheet.iter_rows(min_row=2, max_col=2):
             barcode, quantity = row
-            if barcode is None and quantity is None:
+            if barcode.value is None and quantity.value is None:
                 continue  # Игнорировать пустые строки
-            if not isinstance(barcode, (int, float)) or not isinstance(quantity, (int, float)):
+            if not isinstance(barcode.value, (int, float)) or not isinstance(quantity.value, (int, float)):
                 print(f"Invalid row: {row}")
-                return False
-        return True
+                valid = False
+
+            # Validate cell colors in column B (quantity column)
+            fill = quantity.fill
+            if fill.start_color and fill.start_color.rgb:
+                color = fill.start_color.rgb[-6:]  # Получаем последние 6 символов для hex-кода цвета
+                color = "#" + color  # Преобразуем в формат hex
+                if color not in COLOR_ORDER:
+                    print(f"Unexpected color found: {color} in cell {quantity.coordinate}")
+                    valid = False
+
+        return valid
     except Exception as e:
         print(e)
         return False
@@ -329,7 +342,7 @@ async def process_excel(message: types.Message, state: FSMContext):
             await bot.send_message(message.chat.id, "Выберите склад:", reply_markup=keyboard)
         else:
             await message.answer(
-                "Некорректный файл. Убедитесь, что он не пустой и содержит два столбца: баркод и количество.")
+                "Некорректный файл.\n\nУбедитесь, что он не пустой и содержит два столбца: баркод и количество. \nТакже проверьте использованные цвета")
     except Exception as e:
         print(f"Ошибка при обработке Excel файла: {e}")
         await message.answer("Произошла ошибка при обработке файла. Пожалуйста, попробуйте снова.")
