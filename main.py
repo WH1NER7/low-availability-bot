@@ -14,6 +14,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from datetime import datetime, timedelta
 
+import requests
+
 from bson import ObjectId
 from pymongo import MongoClient
 import openpyxl
@@ -23,6 +25,7 @@ from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
 
 API_TOKEN = os.getenv('BOT_TOKEN')
+cookie = os.getenv('COOKIE')
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
@@ -39,15 +42,47 @@ EXCEL_DIR = 'book_excel'
 if not os.path.exists(EXCEL_DIR):
     os.makedirs(EXCEL_DIR)
 
-# Список складов
-warehouses = [
-    ("Коледино", 507), ("Новосибирск", 686), ("Хабаровск", 1193),
-    ("Подольск", 117501), ("Казань", 117986), ("Электросталь", 120762),
-    ("Астана", 204939), ("Белые столбы", 206236), ("Тула", 206348),
-    ("Пушкино", 207743), ("Невинномысск", 301562), ("Алматы Атакент", 218987),
-    ("Санкт-Петербург (Уткина Заводь)", 2737), ("Краснодар (Тихорецкая)", 130744),
-    ("Екатеринбург - Испытателей 14г", 1733), ("Екатеринбург - Перспективный 12/2", 300571)
+
+def fetch_warehouse_ids(warehouse_names):
+    url = "https://seller-supply.wildberries.ru/ns/sm-supply/supply-manager/api/v1/supply/acceptanceCoefficientsReport"
+    headers = {'Content-Type': 'application/json', 'Cookie': cookie}
+    body = {
+        "params": {
+            "dateTo": "2024-06-26T19:00:00.000Z",
+            "dateFrom": "2024-06-19T14:26:30.572Z"
+        },
+        "jsonrpc": "2.0",
+        "id": "json-rpc_18"
+    }
+
+    response = requests.post(url, headers=headers, json=body)
+    data = response.json()
+    results = data.get("result", {}).get("report", [])
+
+    unique_warehouses = {}  # Используем словарь для исключения дубликатов
+
+    for item in results:
+        if item["acceptanceType"] == 6 and item["warehouseName"] in warehouse_names:
+            if item["warehouseName"] not in unique_warehouses:  # Проверяем, есть ли уже такое название в словаре
+                unique_warehouses[item["warehouseName"]] = item["warehouseID"]
+
+    # Преобразуем словарь в список кортежей
+    warehouse_ids = list(unique_warehouses.items())
+    return warehouse_ids
+
+
+# Здесь список названий складов, для которых тебе нужны ID
+warehouse_names = [
+    "Коледино", "Новосибирск", "Хабаровск",
+    "Подольск", "Казань", "Электросталь",
+    "Астана", "Белые Столбы", "Тула",
+    "СЦ Пушкино", "Невинномысск", "Алматы Атакент",
+    "Санкт-Петербург (Уткина Заводь)", "Краснодар (Тихорецкая)",
+    "Екатеринбург - Испытателей 14г", "Екатеринбург - Перспективный 12/2"
 ]
+
+# Список складов
+warehouses = fetch_warehouse_ids(warehouse_names)
 
 
 async def send_notifications():

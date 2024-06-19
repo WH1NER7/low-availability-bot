@@ -1,16 +1,6 @@
 import openpyxl
 
-COLOR_ORDER = [
-    "#FF0000",  # Красный
-    "#FF9900",  # Оранжевый
-    "#FFFF00",  # Желтый
-    "#00FF00",  # Зеленый
-    "#00FFFF",  # Голубой
-    "#4A86E8",  # Синий
-    "#0000FF",  # Темно-синий
-    "#9900FF",  # Фиолетовый
-    "#FF00FF"  # Розовый
-]
+COLOR_ORDER = ['#FF0000', '#FF9900', '#FFFF00', '#00FF00', '#00FFFF', '#4A86E8', '#0000FF', '#9900FF', '#FF00FF', '#660000', '#7F6000', '#0C343D', '#20124D', '#E06666', '#FFD966', '#93C47D', '#8E7CC3', '#C27BA0', '#F6B26B', '#A2C4C9']
 
 
 def get_colors_from_excel(file_path):
@@ -51,7 +41,7 @@ def add_columns_and_fill_colors(file_path, barcodes, unique_colors):
     sorted_colors = sorted([color[1:] for color in unique_colors if color[1:] in color_index], key=lambda color: color_index[color])
 
     # Соотносим цвета и баркоды
-    color_to_barcode = {color: barcodes[i] for i, color in enumerate(sorted_colors)}
+    color_to_barcode = {color: barcodes[i] for i, color in enumerate(sorted_colors) if i < len(barcodes)}
     print("Color to barcode mapping:", color_to_barcode)
 
     # Заполняем 3ю колонку в зависимости от цвета во второй колонке
@@ -74,7 +64,7 @@ def add_columns_and_fill_colors(file_path, barcodes, unique_colors):
     return updated_file_path
 
 # Пример использования
-file_path = "book_excel/file_29.xlsx"
+file_path = "book_excel/test1.xlsx"
 colors, unique_colors = get_colors_from_excel(file_path)
 barcodes = ["barcode1", "barcode2", "barcode3", "barcode4", "barcode5"]  # пример баркодов
 

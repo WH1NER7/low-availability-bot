@@ -11,7 +11,7 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client.low_limits_bot
 collection = db.book_tasks
 
-cookie = API_TOKEN = os.getenv('COOKIE')
+cookie = os.getenv('COOKIE')
 
 user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
 error_notify_user_id = 615742233
