@@ -41,7 +41,7 @@ collection = db.book_tasks
 
 user_ids_file = 'user_ids.txt'
 user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
-user_ids_extra = {615742233, 1080039077}
+user_ids_extra = {615742233, 1080039077, 6976073210}
 
 EXCEL_DIR = 'book_excel'
 if not os.path.exists(EXCEL_DIR):
