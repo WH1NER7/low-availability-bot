@@ -3,6 +3,8 @@ import os
 import random
 from aiogram.types import ParseMode
 
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+
 import bson
 from aiogram import Bot, types, Dispatcher
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -23,6 +25,8 @@ import openpyxl
 from book_script import book_wh
 from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
+from get_delta_report import ReportDownloader
+from report_aggregation import ReportAggregator
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 cookie = os.getenv('COOKIE')
@@ -37,6 +41,7 @@ collection = db.book_tasks
 
 user_ids_file = 'user_ids.txt'
 user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
+user_ids_extra = {615742233, 1080039077}
 
 EXCEL_DIR = 'book_excel'
 if not os.path.exists(EXCEL_DIR):
@@ -122,24 +127,37 @@ async def send_free_whs():
                 print(e)
 
 
+@dp.message_handler(commands=['start'])
 async def on_start(message: types.Message):
     user_id = message.from_user.id
 
-    with open(user_ids_file, 'r') as users_file:
-        existing_user_ids = set(int(line.strip()) for line in users_file)
+    # Чтение существующих user_id из файла
+    try:
+        with open(user_ids_file, 'r') as users_file:
+            existing_user_ids = set(int(line.strip()) for line in users_file)
+    except FileNotFoundError:
+        existing_user_ids = set()
 
+    # Добавление нового user_id в файл, если его там нет
     if user_id not in existing_user_ids:
         with open(user_ids_file, 'a') as users_file:
             users_file.write(str(user_id) + '\n')
-
         await message.reply("Привет! Теперь вы будете получать уведомления.")
     else:
         await message.reply("Вы уже подписаны на уведомления.")
 
-    if user_id in user_ids_whs:
+    # Создание клавиатуры в зависимости от user_id
+    if user_id in user_ids_whs and user_id in user_ids_extra:
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Дельта отчет"))
+    elif user_id in user_ids_whs:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"))
-        await message.answer("Выберите действие:", reply_markup=keyboard)
+    elif user_id in user_ids_extra:
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard.add(types.KeyboardButton("Дельта отчет"))
+
+    await message.answer("Выберите действие:", reply_markup=keyboard)
 
 
 class BookFSM(StatesGroup):
@@ -169,18 +187,21 @@ def validate_date(date_text):
         return False
 
 
+
+# Функция для проверки валидности Excel файла
 def validate_excel(file_path):
     try:
         workbook = openpyxl.load_workbook(file_path)
         sheet = workbook.active
         valid = True
+        invalid_rows = []
 
         for row in sheet.iter_rows(min_row=2, max_col=2):
             barcode, quantity = row
             if barcode.value is None and quantity.value is None:
                 continue  # Игнорировать пустые строки
             if not isinstance(barcode.value, (int, float)) or not isinstance(quantity.value, (int, float)):
-                print(f"Invalid row: {row}")
+                invalid_rows.append(f"Invalid data in row {row[0].row}: Barcode or Quantity is not a number.")
                 valid = False
 
             # Validate cell colors in column B (quantity column)
@@ -189,13 +210,12 @@ def validate_excel(file_path):
                 color = fill.start_color.rgb[-6:]  # Получаем последние 6 символов для hex-кода цвета
                 color = "#" + color  # Преобразуем в формат hex
                 if color not in COLOR_ORDER:
-                    print(f"Unexpected color found: {color} in cell {quantity.coordinate}")
+                    invalid_rows.append(f"Unexpected color {color} found in cell {quantity.coordinate}.")
                     valid = False
 
-        return valid
+        return valid, invalid_rows
     except Exception as e:
-        print(e)
-        return False
+        return False, [str(e)]
 
 
 def generate_random_number():
@@ -363,7 +383,8 @@ async def process_excel(message: types.Message, state: FSMContext):
         print(f"Файл {file_name} загружен и сохранен.")
 
         # Проверка валидности файла
-        if validate_excel(file_name):
+        is_valid, errors = validate_excel(file_name)
+        if is_valid:
             async with state.proxy() as data:
                 data['file_name'] = file_name
                 data['user_name'] = message.from_user.username
@@ -376,8 +397,9 @@ async def process_excel(message: types.Message, state: FSMContext):
             await BookFSM.choose_warehouse.set()
             await bot.send_message(message.chat.id, "Выберите склад:", reply_markup=keyboard)
         else:
-            await message.answer(
-                "Некорректный файл.\n\nУбедитесь, что он не пустой и содержит два столбца: баркод и количество. \nТакже проверьте использованные цвета")
+            error_message = "Некорректный файл.\n\nУбедитесь, что он не пустой и содержит два столбца: баркод и количество.\nТакже проверьте использованные цвета:\n"
+            error_message += "\n".join(errors)
+            await message.answer(error_message)
     except Exception as e:
         print(f"Ошибка при обработке Excel файла: {e}")
         await message.answer("Произошла ошибка при обработке файла. Пожалуйста, попробуйте снова.")
@@ -449,6 +471,189 @@ async def send_booking_info():
     if errors:
         for error in errors:
             await bot.send_message(615742233, error, parse_mode=ParseMode.HTML)
+
+dp.middleware.setup(LoggingMiddleware())
+
+class DeltaFSM(StatesGroup):
+    choose_date_range = State()
+    input_start_date = State()
+    input_end_date = State()
+    input_threshold = State()
+
+@dp.message_handler(lambda message: message.text == "Дельта отчет", state="*")
+async def choose_date_range(message: types.Message):
+    await DeltaFSM.choose_date_range.set()
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("Выбрать диапазон дат", callback_data="range"),
+        InlineKeyboardButton("7 дней", callback_data="7"),
+        InlineKeyboardButton("3 дня", callback_data="3")
+    )
+    await message.reply(
+        text="Выберите диапазон дат или предопределенный период:",
+        reply_markup=keyboard
+    )
+
+@dp.callback_query_handler(lambda c: c.data in ['range', '7', '3'], state=DeltaFSM.choose_date_range)
+async def process_date_type(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['date_type'] = callback_query.data
+
+    if callback_query.data == 'range':
+        await DeltaFSM.input_start_date.set()
+        keyboard = InlineKeyboardMarkup(row_width=3)
+        current_date = datetime.now()
+        for i in range(12):
+            date = current_date + timedelta(days=i)
+            formatted_date = date.strftime('%d.%m.%Y')
+            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+
+        await bot.edit_message_text(
+            text="Выберите дату начала диапазона:",
+            chat_id=callback_query.from_user.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=keyboard
+        )
+    else:
+        period_days = int(callback_query.data)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=period_days - 1)
+
+        await DeltaFSM.input_threshold.set()
+        keyboard = InlineKeyboardMarkup(row_width=3)
+        for threshold in [20, 30, 40]:
+            keyboard.insert(InlineKeyboardButton(str(threshold), callback_data=str(threshold)))
+
+        async with state.proxy() as data:
+            data['start_date'] = start_date.strftime('%d.%m.%Y')
+            data['end_date'] = end_date.strftime('%d.%m.%Y')
+
+        await bot.edit_message_text(
+            text="Выберите порог дельты:",
+            chat_id=callback_query.from_user.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=keyboard
+        )
+    await callback_query.answer()
+
+@dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_start_date)
+async def process_start_date(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['start_date'] = callback_query.data
+
+    await DeltaFSM.input_end_date.set()
+
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
+    for i in range(1, 13, 2):  # Генерируем даты, кратные двум
+        date = start_date + timedelta(days=i)
+        formatted_date = date.strftime('%d.%m.%Y')
+        keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+
+    await bot.edit_message_text(
+        text="Выберите дату окончания диапазона:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=keyboard
+    )
+    await callback_query.answer()
+
+@dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_end_date)
+async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['end_date'] = callback_query.data
+
+    await DeltaFSM.input_threshold.set()
+
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    for threshold in [20, 30, 40]:
+        keyboard.insert(InlineKeyboardButton(str(threshold), callback_data=str(threshold)))
+
+    await bot.edit_message_text(
+        text="Выберите порог дельты:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=keyboard
+    )
+    await callback_query.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_threshold)
+async def process_threshold(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['threshold'] = int(callback_query.data)
+        start_date = data['start_date']
+        end_date = data['end_date']
+        threshold = data['threshold']
+
+    DELTA_REPORT_DIR = 'delta_reports'
+    api_key = os.getenv('API_TOKEN')
+    myk_api_key = os.getenv('MYK_API_KEY')
+
+    try:
+        # Создание и загрузка отчета
+        downloader = ReportDownloader(api_key, DELTA_REPORT_DIR)
+
+        # Расчет диапазона дат
+        start_date_dt = datetime.strptime(start_date, '%d.%m.%Y')
+        end_date_dt = datetime.strptime(end_date, '%d.%m.%Y')
+        today = datetime.now()
+
+        # Вычисляем количество дней в исходном диапазоне
+        delta_days = (end_date_dt - start_date_dt).days
+
+        # Расширяем диапазон на delta_days дней назад
+        extended_start_date_dt = start_date_dt - timedelta(days=delta_days + 1)
+
+        # Сдвигаем весь расширенный диапазон на один день назад
+        adjusted_start_date_dt = extended_start_date_dt - timedelta(days=1)
+        adjusted_end_date_dt = end_date_dt - timedelta(days=1)
+
+        # Проверка, если конечная дата больше или равна текущей дате, то сдвигаем её на один день назад
+        if adjusted_end_date_dt >= today:
+            adjusted_end_date_dt -= timedelta(days=1)
+
+        adjusted_start_date = adjusted_start_date_dt.strftime('%Y-%m-%d')
+        adjusted_end_date = adjusted_end_date_dt.strftime('%Y-%m-%d')
+
+        print(f"Создание отчета с датами: {adjusted_start_date} - {adjusted_end_date}")
+        report_id = downloader.create_report(adjusted_start_date, adjusted_end_date)
+
+        # Проверка статуса отчета и скачивание данных
+        if downloader.check_report_status(report_id):
+            print("Отчет готов, скачивание данных...")
+            extracted_folder = downloader.download_report(report_id)
+            csv_file_path = downloader.find_csv_file(extracted_folder)
+            print(f"CSV файл найден по пути: {csv_file_path}")
+            excel_file_path = downloader.convert_csv_to_excel(csv_file_path)
+            print(f"Excel файл сохранен по пути: {excel_file_path}")
+
+            # Обработка отчета
+            aggregator = ReportAggregator(file_path=excel_file_path, api_key=api_key, myk_key=myk_api_key, delta_threshold=threshold)
+            output_file_path, missing_nmid_file_path = aggregator.run()
+            print(f"Итоговый файл: {output_file_path}")
+            print(f"Список отсутствующих артикулов: {missing_nmid_file_path}")
+
+            await bot.send_document(
+                chat_id=callback_query.from_user.id,
+                document=open(output_file_path, 'rb'),
+                caption="Итоговый отчет"
+            )
+
+            await bot.send_document(
+                chat_id=callback_query.from_user.id,
+                document=open(missing_nmid_file_path, 'rb'),
+                caption="Список отсутствующих артикулов"
+            )
+        else:
+            print("Отчет не был успешно создан или загружен.")
+
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        await bot.send_message(chat_id=callback_query.from_user.id, text=f"Произошла ошибка: {str(e)}")
+
+    await state.finish()
+    await callback_query.answer()
 
 
 def run_bot():
