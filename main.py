@@ -629,7 +629,7 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
             print(f"Excel файл сохранен по пути: {excel_file_path}")
 
             # Обработка отчета
-            aggregator = ReportAggregator(file_path=excel_file_path, api_key=api_key, myk_key=myk_api_key, delta_threshold=threshold)
+            aggregator = ReportAggregator(file_path=excel_file_path, myk_key=myk_api_key, delta_threshold=threshold)
             output_file_path, missing_nmid_file_path = aggregator.run()
             print(f"Итоговый файл: {output_file_path}")
             print(f"Список отсутствующих артикулов: {missing_nmid_file_path}")

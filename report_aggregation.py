@@ -1,12 +1,14 @@
+import os
+
 import pandas as pd
 import requests
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
+
 class ReportAggregator:
-    def __init__(self, file_path, api_key, myk_key, delta_threshold=20):
+    def __init__(self, file_path, myk_key, delta_threshold=20):
         self.file_path = file_path
-        self.api_key = api_key
         self.myk_key = myk_key
         self.delta_threshold = delta_threshold
 
@@ -80,6 +82,8 @@ class ReportAggregator:
         # Преобразование данных API в DataFrame
         items_df = pd.DataFrame(items_data)
         items_df = items_df[['nm', 'item_category', 'item_name']]
+
+        items_df = items_df.drop_duplicates(subset='nm')
         items_df.columns = ['nmID', 'Категория', 'Название']
 
         # Объединение данных с результатами агрегации
@@ -100,7 +104,6 @@ class ReportAggregator:
         # Сохранение итогового результата в Excel
         output_file_path = f"{first_period_str} - Дельта.xlsx"
         final_df.to_excel(output_file_path, index=False)
-
         # Открытие созданного Excel файла для добавления стилей
         wb = load_workbook(output_file_path)
         ws = wb.active
@@ -131,12 +134,13 @@ class ReportAggregator:
 
         return output_file_path, missing_nmid_file_path
 
+
 # # Пример использования
-# file_path = '437c4438-a9e5-400c-89f4-33538cbffa5a_extracted/437c4438-a9e5-400c-89f4-33538cbffa5a.xlsx'
+# file_path = 'delta_reports/d68b8c61-6ed1-4627-8555-9132aefda5c9_extracted/d68b8c61-6ed1-4627-8555-9132aefda5c9.xlsx'
 # api_key = os.getenv('API_KEY')
 # myk_key = os.getenv('API_MYK_KEY')
 #
-# aggregator = ReportAggregator(file_path, api_key, myk_key)
+# aggregator = ReportAggregator(file_path, myk_key, delta_threshold=20)
 # output_file_path, missing_nmid_file_path = aggregator.run()
 # print(f"Итоговый файл: {output_file_path}")
 # print(f"Файл отсутствующих артикулов: {missing_nmid_file_path}")
