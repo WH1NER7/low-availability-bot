@@ -41,7 +41,7 @@ collection = db.book_tasks
 
 user_ids_file = 'user_ids.txt'
 user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
-user_ids_extra = {615742233, 1080039077, 6976073210}
+user_ids_extra = {615742233, 1080039077, 6976073210, 1323629722}
 
 EXCEL_DIR = 'book_excel'
 if not os.path.exists(EXCEL_DIR):
@@ -502,9 +502,9 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
     if callback_query.data == 'range':
         await DeltaFSM.input_start_date.set()
         keyboard = InlineKeyboardMarkup(row_width=3)
-        current_date = datetime.now()
-        for i in range(12):
-            date = current_date + timedelta(days=i)
+        current_date = datetime.now() - timedelta(days=6)
+        for i in reversed(range(12)):
+            date = current_date - timedelta(days=i)
             formatted_date = date.strftime('%d.%m.%Y')
             keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
 
@@ -536,6 +536,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         )
     await callback_query.answer()
 
+
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_start_date)
 async def process_start_date(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
@@ -545,10 +546,13 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
 
     keyboard = InlineKeyboardMarkup(row_width=3)
     start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
-    for i in range(1, 13, 2):  # Генерируем даты, кратные двум
+    current_date = datetime.now()
+
+    for i in range(1, 12, 2):  # Генерируем даты, кратные двум
         date = start_date + timedelta(days=i)
-        formatted_date = date.strftime('%d.%m.%Y')
-        keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+        if date <= current_date:  # Проверяем, чтобы дата не превышала текущую дату
+            formatted_date = date.strftime('%d.%m.%Y')
+            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
 
     await bot.edit_message_text(
         text="Выберите дату окончания диапазона:",
@@ -557,6 +561,7 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
         reply_markup=keyboard
     )
     await callback_query.answer()
+
 
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_end_date)
 async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
