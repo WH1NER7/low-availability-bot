@@ -502,8 +502,8 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
     if callback_query.data == 'range':
         await DeltaFSM.input_start_date.set()
         keyboard = InlineKeyboardMarkup(row_width=3)
-        current_date = datetime.now() - timedelta(days=6)
-        for i in reversed(range(12)):
+        current_date = datetime.now() - timedelta(days=3)
+        for i in reversed(range(27)):
             date = current_date - timedelta(days=i)
             formatted_date = date.strftime('%d.%m.%Y')
             keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
@@ -548,7 +548,7 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
     start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
     current_date = datetime.now()
 
-    for i in range(1, 12, 2):  # Генерируем даты, кратные двум
+    for i in range(1, 30, 2):  # Генерируем даты, кратные двум
         date = start_date + timedelta(days=i)
         if date <= current_date:  # Проверяем, чтобы дата не превышала текущую дату
             formatted_date = date.strftime('%d.%m.%Y')
