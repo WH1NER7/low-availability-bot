@@ -546,7 +546,7 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
 
     keyboard = InlineKeyboardMarkup(row_width=3)
     start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
-    current_date = datetime.now()
+    current_date = datetime.now() - timedelta(days=1)
 
     for i in range(1, 30, 2):  # Генерируем даты, кратные двум
         date = start_date + timedelta(days=i)
