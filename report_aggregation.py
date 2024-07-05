@@ -1,5 +1,3 @@
-import os
-
 import pandas as pd
 import requests
 from openpyxl import load_workbook
@@ -56,7 +54,8 @@ class ReportAggregator:
         for nmID in result_df['nmID']:
             first_period_check = df[(df['nmID'] == nmID) & (df['dt'].isin(first_period_dates))]
             second_period_check = df[(df['nmID'] == nmID) & (df['dt'].isin(second_period_dates))]
-            if len(first_period_check) != len(first_period_dates) or len(second_period_check) != len(second_period_dates):
+            if len(first_period_check) != len(first_period_dates) or len(second_period_check) != len(
+                    second_period_dates):
                 missing_nmid.append(nmID)
 
         # Удаление артикулов, которые отсутствуют в некоторых днях
@@ -64,9 +63,11 @@ class ReportAggregator:
 
         # Добавление дельты и процента отклонения
         result_df['orders_delta'] = result_df['ordersCount_current'] - result_df['ordersCount_previous']
-        result_df['orders_percent_change'] = ((result_df['orders_delta'] / result_df['ordersCount_previous']) * 100).round(2)
+        result_df['orders_percent_change'] = (
+                    (result_df['orders_delta'] / result_df['ordersCount_previous']) * 100).round(2)
         result_df['buyouts_delta'] = result_df['buyoutsCount_current'] - result_df['buyoutsCount_previous']
-        result_df['buyouts_percent_change'] = ((result_df['buyouts_delta'] / result_df['buyoutsCount_previous']) * 100).round(2)
+        result_df['buyouts_percent_change'] = (
+                    (result_df['buyouts_delta'] / result_df['buyoutsCount_previous']) * 100).round(2)
 
         # Фильтрация по дельте
         result_df = result_df[result_df['orders_delta'].abs() > self.delta_threshold]
@@ -89,21 +90,29 @@ class ReportAggregator:
         # Объединение данных с результатами агрегации
         final_df = pd.merge(items_df, result_df, on='nmID', how='right')
 
+        # Добавление столбца со ссылкой
+        final_df['Ссылка'] = 'https://www.wildberries.ru/catalog/' + final_df['nmID'].astype(
+            str) + '/detail.aspx?targetUrl=SP'
+
         # Переупорядочение столбцов
-        final_df = final_df[['Категория', 'Название', 'nmID',
+        final_df = final_df[['Категория', 'Название', 'nmID', 'Ссылка',
                              'ordersCount_current', 'ordersCount_previous', 'orders_delta', 'orders_percent_change',
-                             'buyoutsCount_current', 'buyoutsCount_previous', 'buyouts_delta', 'buyouts_percent_change']]
+                             'buyoutsCount_current', 'buyoutsCount_previous', 'buyouts_delta',
+                             'buyouts_percent_change']]
 
         # Переименование столбцов
-        final_df.columns = ['Категория', 'Название', 'Артикул',
-                            f'Заказы текущий период ({first_period_str})', f'Заказы предыдущий период ({second_period_str})',
+        final_df.columns = ['Категория', 'Название', 'Артикул', 'Ссылка',
+                            f'Заказы текущий период ({first_period_str})',
+                            f'Заказы предыдущий период ({second_period_str})',
                             'Дельта заказов', 'Процент отклонения заказов',
-                            f'Выкупы текущий период ({first_period_str})', f'Выкупы предыдущий период ({second_period_str})',
+                            f'Выкупы текущий период ({first_period_str})',
+                            f'Выкупы предыдущий период ({second_period_str})',
                             'Дельта выкупов', 'Процент отклонения выкупов']
 
         # Сохранение итогового результата в Excel
         output_file_path = f"{first_period_str} - Дельта.xlsx"
         final_df.to_excel(output_file_path, index=False)
+
         # Открытие созданного Excel файла для добавления стилей
         wb = load_workbook(output_file_path)
         ws = wb.active
@@ -113,7 +122,14 @@ class ReportAggregator:
         green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
 
         # Применение заливки для дельт
-        for row in ws.iter_rows(min_row=2, min_col=6, max_col=6, max_row=ws.max_row):
+        for row in ws.iter_rows(min_row=2, min_col=7, max_col=7, max_row=ws.max_row):
+            for cell in row:
+                if cell.value > 0:
+                    cell.fill = green_fill
+                elif cell.value < 0:
+                    cell.fill = red_fill
+
+        for row in ws.iter_rows(min_row=2, min_col=11, max_col=11, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill
@@ -136,11 +152,7 @@ class ReportAggregator:
 
 
 # # Пример использования
-# file_path = 'delta_reports/d68b8c61-6ed1-4627-8555-9132aefda5c9_extracted/d68b8c61-6ed1-4627-8555-9132aefda5c9.xlsx'
-# api_key = os.getenv('API_KEY')
-# myk_key = os.getenv('API_MYK_KEY')
-#
-# aggregator = ReportAggregator(file_path, myk_key, delta_threshold=20)
-# output_file_path, missing_nmid_file_path = aggregator.run()
-# print(f"Итоговый файл: {output_file_path}")
-# print(f"Файл отсутствующих артикулов: {missing_nmid_file_path}")
+# file_path = 'path_to_your_file.xlsx'  # Замените на путь к вашему файлу
+# myk_key = 'your_myk_key'  # Замените на ваш API ключ
+# aggregator = ReportAggregator(file_path, myk_key)
+# aggregator.run()
