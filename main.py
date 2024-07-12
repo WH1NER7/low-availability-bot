@@ -41,7 +41,7 @@ collection = db.book_tasks
 
 user_ids_file = 'user_ids.txt'
 user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
-user_ids_extra = {615742233, 1080039077, 6976073210, 1323629722}
+user_ids_extra = {615742233, 1080039077, 6976073210, 1323629722, 393856450}
 
 EXCEL_DIR = 'book_excel'
 if not os.path.exists(EXCEL_DIR):
@@ -62,6 +62,7 @@ def fetch_warehouse_ids(warehouse_names):
 
     response = requests.post(url, headers=headers, json=body)
     data = response.json()
+
     results = data.get("result", {}).get("report", [])
 
     unique_warehouses = {}  # Используем словарь для исключения дубликатов
@@ -485,7 +486,7 @@ async def choose_date_range(message: types.Message):
     await DeltaFSM.choose_date_range.set()
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
-        InlineKeyboardButton("Выбрать диапазон дат", callback_data="range"),
+        InlineKeyboardButton("Выбрать диапазон дат", callback_data="range1"),
         InlineKeyboardButton("7 дней", callback_data="7"),
         InlineKeyboardButton("3 дня", callback_data="3")
     )
@@ -494,32 +495,20 @@ async def choose_date_range(message: types.Message):
         reply_markup=keyboard
     )
 
-@dp.callback_query_handler(lambda c: c.data in ['range', '7', '3'], state=DeltaFSM.choose_date_range)
+@dp.callback_query_handler(lambda c: c.data in ['range1', '7', '3'], state=DeltaFSM.choose_date_range)
 async def process_date_type(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         data['date_type'] = callback_query.data
 
-    if callback_query.data == 'range':
-        await DeltaFSM.input_start_date.set()
-        keyboard = InlineKeyboardMarkup(row_width=3)
-        current_date = datetime.now() - timedelta(days=3)
-        for i in reversed(range(27)):
-            date = current_date - timedelta(days=i)
-            formatted_date = date.strftime('%d.%m.%Y')
-            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
-
-        await bot.edit_message_text(
-            text="Выберите дату начала диапазона:",
-            chat_id=callback_query.from_user.id,
-            message_id=callback_query.message.message_id,
-            reply_markup=keyboard
-        )
+    if callback_query.data == 'range1':
+        current_month = datetime.now().replace(day=1)
+        await show_start_date_keyboard(callback_query, state, current_month)
     else:
         period_days = int(callback_query.data)
         end_date = datetime.now()
         start_date = end_date - timedelta(days=period_days - 1)
 
-        await DeltaFSM.input_threshold.set()
+        await DeltaFSM.input_start_date.set()
         keyboard = InlineKeyboardMarkup(row_width=3)
         for threshold in [20, 30, 40]:
             keyboard.insert(InlineKeyboardButton(str(threshold), callback_data=str(threshold)))
@@ -536,23 +525,77 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         )
     await callback_query.answer()
 
+async def show_start_date_keyboard(callback_query, state, month):
+    async with state.proxy() as data:
+        data['current_month'] = month.strftime('%Y-%m')
+
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    first_day_of_month = month
+    last_day_of_month = (first_day_of_month + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    days_in_month = (last_day_of_month - first_day_of_month).days + 1
+
+    max_start_date = datetime.now() - timedelta(days=2)
+
+    for i in range(days_in_month):
+        date = first_day_of_month + timedelta(days=i)
+        if date <= max_start_date:
+            formatted_date = date.strftime('%d.%m.%Y')
+            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+
+    nav_keyboard = InlineKeyboardMarkup(row_width=2)
+    if month > datetime.now().replace(day=1) - timedelta(days=365):
+        nav_keyboard.insert(InlineKeyboardButton("<< Назад", callback_data="prev_month"))
+    if month < datetime.now().replace(day=1):
+        nav_keyboard.insert(InlineKeyboardButton("Вперед >>", callback_data="next_month"))
+
+    keyboard.add(*nav_keyboard.inline_keyboard[0])
+    await DeltaFSM.input_start_date.set()
+    await bot.edit_message_text(
+        text="Выберите дату начала диапазона:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=keyboard
+    )
+
+@dp.callback_query_handler(lambda c: c.data in ['prev_month', 'next_month'], state=[DeltaFSM.input_start_date, DeltaFSM.input_end_date])
+async def navigate_month(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        current_month_str = data['current_month']
+        current_month = datetime.strptime(current_month_str, '%Y-%m')
+        if callback_query.data == 'prev_month':
+            new_month = current_month - timedelta(days=1)
+            new_month = new_month.replace(day=1)
+        else:
+            new_month = (current_month + timedelta(days=32)).replace(day=1)
+
+    await show_start_date_keyboard(callback_query, state, new_month)
+    await callback_query.answer()
+
 
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_start_date)
 async def process_start_date(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         data['start_date'] = callback_query.data
-
+    print(callback_query.data)
     await DeltaFSM.input_end_date.set()
 
     keyboard = InlineKeyboardMarkup(row_width=3)
     start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
     current_date = datetime.now() - timedelta(days=1)
 
-    for i in range(1, 30, 2):  # Генерируем даты, кратные двум
+    # Расчет max_end_date так, чтобы количество дней между start_date и max_end_date было четным
+    delta_days = (current_date - start_date).days
+    if delta_days % 2 != 0:
+        delta_days += 1
+    max_end_date = start_date + timedelta(days=delta_days)
+
+    print(max_end_date)
+
+    for i in range(1, (max_end_date - start_date).days):
         date = start_date + timedelta(days=i)
-        if date <= current_date:  # Проверяем, чтобы дата не превышала текущую дату
-            formatted_date = date.strftime('%d.%m.%Y')
-            keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
+        formatted_date = date.strftime('%d.%m.%Y')
+        print('formated date', formatted_date)
+        keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
 
     await bot.edit_message_text(
         text="Выберите дату окончания диапазона:",
@@ -562,12 +605,11 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
     )
     await callback_query.answer()
 
-
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_end_date)
 async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         data['end_date'] = callback_query.data
-
+    print('как дата поступает в трешхолд', data['end_date'])
     await DeltaFSM.input_threshold.set()
 
     keyboard = InlineKeyboardMarkup(row_width=3)
@@ -590,7 +632,7 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
         start_date = data['start_date']
         end_date = data['end_date']
         threshold = data['threshold']
-
+    print('Стата', start_date, end_date, threshold)
     DELTA_REPORT_DIR = 'delta_reports'
     api_key = os.getenv('API_TOKEN')
     myk_api_key = os.getenv('MYK_API_KEY')
@@ -605,21 +647,13 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
         today = datetime.now()
 
         # Вычисляем количество дней в исходном диапазоне
-        delta_days = (end_date_dt - start_date_dt).days
+        delta_days = (end_date_dt - start_date_dt).days + 1
 
         # Расширяем диапазон на delta_days дней назад
-        extended_start_date_dt = start_date_dt - timedelta(days=delta_days + 1)
+        extended_start_date_dt = start_date_dt - timedelta(days=delta_days)
 
-        # Сдвигаем весь расширенный диапазон на один день назад
-        adjusted_start_date_dt = extended_start_date_dt - timedelta(days=1)
-        adjusted_end_date_dt = end_date_dt - timedelta(days=1)
-
-        # Проверка, если конечная дата больше или равна текущей дате, то сдвигаем её на один день назад
-        if adjusted_end_date_dt >= today:
-            adjusted_end_date_dt -= timedelta(days=1)
-
-        adjusted_start_date = adjusted_start_date_dt.strftime('%Y-%m-%d')
-        adjusted_end_date = adjusted_end_date_dt.strftime('%Y-%m-%d')
+        adjusted_start_date = extended_start_date_dt.strftime('%Y-%m-%d')
+        adjusted_end_date = end_date_dt.strftime('%Y-%m-%d')
 
         print(f"Создание отчета с датами: {adjusted_start_date} - {adjusted_end_date}")
         report_id = downloader.create_report(adjusted_start_date, adjusted_end_date)
