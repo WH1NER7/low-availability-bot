@@ -505,10 +505,10 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         await show_start_date_keyboard(callback_query, state, current_month)
     else:
         period_days = int(callback_query.data)
-        end_date = datetime.now()
+        end_date = datetime.now() - timedelta(days=1)
         start_date = end_date - timedelta(days=period_days - 1)
-
-        await DeltaFSM.input_start_date.set()
+        print(end_date, start_date)
+        await DeltaFSM.input_threshold.set()
         keyboard = InlineKeyboardMarkup(row_width=3)
         for threshold in [20, 30, 40]:
             keyboard.insert(InlineKeyboardButton(str(threshold), callback_data=str(threshold)))
@@ -516,7 +516,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         async with state.proxy() as data:
             data['start_date'] = start_date.strftime('%d.%m.%Y')
             data['end_date'] = end_date.strftime('%d.%m.%Y')
-
+        print(end_date.strftime('%d.%m.%Y'))
         await bot.edit_message_text(
             text="Выберите порог дельты:",
             chat_id=callback_query.from_user.id,

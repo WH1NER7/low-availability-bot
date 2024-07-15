@@ -3,7 +3,6 @@ import requests
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
-
 class ReportAggregator:
     def __init__(self, file_path, myk_key, delta_threshold=20):
         self.file_path = file_path
@@ -49,6 +48,12 @@ class ReportAggregator:
         # Объединение данных по двум периодам
         result_df = pd.merge(first_period_aggregated, second_period_aggregated, on='nmID', how='outer')
 
+        # Преобразование столбцов в числовой формат
+        result_df['ordersCount_current'] = pd.to_numeric(result_df['ordersCount_current'], errors='coerce').fillna(0)
+        result_df['ordersCount_previous'] = pd.to_numeric(result_df['ordersCount_previous'], errors='coerce').fillna(0)
+        result_df['buyoutsCount_current'] = pd.to_numeric(result_df['buyoutsCount_current'], errors='coerce').fillna(0)
+        result_df['buyoutsCount_previous'] = pd.to_numeric(result_df['buyoutsCount_previous'], errors='coerce').fillna(0)
+
         # Проверка наличия каждого артикула в каждом из 10 дней
         missing_nmid = []
         for nmID in result_df['nmID']:
@@ -64,13 +69,13 @@ class ReportAggregator:
         # Добавление дельты и процента отклонения
         result_df['orders_delta'] = result_df['ordersCount_current'] - result_df['ordersCount_previous']
         result_df['orders_percent_change'] = (
-                    (result_df['orders_delta'] / result_df['ordersCount_previous']) * 100).round(2)
+                (result_df['orders_delta'] / result_df['ordersCount_previous'].replace({0:1})) * 100).round(2)
         result_df['buyouts_delta'] = result_df['buyoutsCount_current'] - result_df['buyoutsCount_previous']
         result_df['buyouts_percent_change'] = (
-                    (result_df['buyouts_delta'] / result_df['buyoutsCount_previous']) * 100).round(2)
+                (result_df['buyouts_delta'] / result_df['buyoutsCount_previous'].replace({0:1})) * 100).round(2)
 
-        # Фильтрация по дельте
-        result_df = result_df[result_df['orders_delta'].abs() > self.delta_threshold]
+        # Фильтрация по проценту изменения
+        result_df = result_df[result_df['orders_percent_change'].abs() > self.delta_threshold]
 
         # Получение данных с API
         api_url = 'http://217.25.93.96/root_id?company=missyourkiss'
@@ -121,15 +126,16 @@ class ReportAggregator:
         red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
         green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
 
-        # Применение заливки для дельт
-        for row in ws.iter_rows(min_row=2, min_col=7, max_col=7, max_row=ws.max_row):
+        # Применение заливки для процентного отклонения заказов
+        for row in ws.iter_rows(min_row=2, min_col=8, max_col=8, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill
                 elif cell.value < 0:
                     cell.fill = red_fill
 
-        for row in ws.iter_rows(min_row=2, min_col=11, max_col=11, max_row=ws.max_row):
+        # Применение заливки для процентного отклонения выкупов
+        for row in ws.iter_rows(min_row=2, min_col=12, max_col=12, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill
