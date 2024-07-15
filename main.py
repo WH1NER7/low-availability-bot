@@ -10,7 +10,7 @@ from aiogram import Bot, types, Dispatcher
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ContentType
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ContentType, InputFile
 from aiogram.utils import executor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
@@ -27,6 +27,9 @@ from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
 from get_delta_report import ReportDownloader
 from report_aggregation import ReportAggregator
+
+import pandas as pd
+from collections import defaultdict
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 cookie = os.getenv('COOKIE')
@@ -46,6 +49,40 @@ user_ids_extra = {615742233, 1080039077, 6976073210, 1323629722, 393856450}
 EXCEL_DIR = 'book_excel'
 if not os.path.exists(EXCEL_DIR):
     os.makedirs(EXCEL_DIR)
+
+
+# Функция для переворачивания таблицы
+def pivot_table_by_region(file_path):
+    # Чтение Excel файла
+    df = pd.read_excel(file_path)
+
+    # Создание словаря для хранения данных
+    data_dict = defaultdict(lambda: defaultdict(int))
+
+    # Заполнение словаря данными из таблицы
+    for _, row in df.iterrows():
+        seller_art = row['Артикул продавца']
+        barcode = row['Баркод']
+        size = row['Размер']
+        region = row['Рекомендуемый округ для поставки']
+        qty_to_supply = row['Количество к поставке']
+
+        data_dict[(seller_art, barcode, size)][region] += qty_to_supply
+
+    # Создание нового DataFrame
+    regions = sorted(set(df['Рекомендуемый округ для поставки']))
+    new_columns = ['Артикул продавца', 'Штрихкод', 'Размер'] + regions
+    new_df = pd.DataFrame(columns=new_columns)
+
+    # Заполнение нового DataFrame
+    for (seller_art, barcode, size), region_data in data_dict.items():
+        row_data = [seller_art, str(barcode), size] + [region_data.get(region, 0) for region in regions]
+        new_df.loc[len(new_df)] = row_data
+
+    # Сохранение результата в новый Excel файл
+    output_file_path = file_path.replace('.xlsx', '_pivoted.xlsx')
+    new_df.to_excel(output_file_path, index=False)
+    return output_file_path
 
 
 def fetch_warehouse_ids(warehouse_names):
@@ -95,7 +132,8 @@ async def send_notifications():
     with open(user_ids_file, 'r') as users_file:
         user_ids = set(int(line.strip()) for line in users_file)
 
-    with open('data_file.json', 'r', encoding='utf-8') as file: ## with open('/home/dan/bots/flask_new/output_file.json', 'r', encoding='utf-8') as file:
+    with open('data_file.json', 'r',
+              encoding='utf-8') as file:  ## with open('/home/dan/bots/flask_new/output_file.json', 'r', encoding='utf-8') as file:
 
         data = json.load(file)
 
@@ -150,10 +188,10 @@ async def on_start(message: types.Message):
     # Создание клавиатуры в зависимости от user_id
     if user_id in user_ids_whs and user_id in user_ids_extra:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Дельта отчет"))
+        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Сплит WB"))
     elif user_id in user_ids_whs:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"))
+        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Сплит WB"))
     elif user_id in user_ids_extra:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(types.KeyboardButton("Дельта отчет"))
@@ -186,7 +224,6 @@ def validate_date(date_text):
         return True
     except ValueError:
         return False
-
 
 
 # Функция для проверки валидности Excel файла
@@ -457,7 +494,6 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
     await callback_query.answer()
 
 
-
 async def notify_users(message, user_ids):
     for user_id in user_ids:
         await bot.send_message(user_id, message, parse_mode=ParseMode.HTML)
@@ -473,13 +509,16 @@ async def send_booking_info():
         for error in errors:
             await bot.send_message(615742233, error, parse_mode=ParseMode.HTML)
 
+
 dp.middleware.setup(LoggingMiddleware())
+
 
 class DeltaFSM(StatesGroup):
     choose_date_range = State()
     input_start_date = State()
     input_end_date = State()
     input_threshold = State()
+
 
 @dp.message_handler(lambda message: message.text == "Дельта отчет", state="*")
 async def choose_date_range(message: types.Message):
@@ -494,6 +533,7 @@ async def choose_date_range(message: types.Message):
         text="Выберите диапазон дат или предопределенный период:",
         reply_markup=keyboard
     )
+
 
 @dp.callback_query_handler(lambda c: c.data in ['range1', '7', '3'], state=DeltaFSM.choose_date_range)
 async def process_date_type(callback_query: types.CallbackQuery, state: FSMContext):
@@ -524,6 +564,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
             reply_markup=keyboard
         )
     await callback_query.answer()
+
 
 async def show_start_date_keyboard(callback_query, state, month):
     async with state.proxy() as data:
@@ -557,7 +598,9 @@ async def show_start_date_keyboard(callback_query, state, month):
         reply_markup=keyboard
     )
 
-@dp.callback_query_handler(lambda c: c.data in ['prev_month', 'next_month'], state=[DeltaFSM.input_start_date, DeltaFSM.input_end_date])
+
+@dp.callback_query_handler(lambda c: c.data in ['prev_month', 'next_month'],
+                           state=[DeltaFSM.input_start_date, DeltaFSM.input_end_date])
 async def navigate_month(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         current_month_str = data['current_month']
@@ -604,6 +647,7 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
         reply_markup=keyboard
     )
     await callback_query.answer()
+
 
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_end_date)
 async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
@@ -693,6 +737,28 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
 
     await state.finish()
     await callback_query.answer()
+
+
+@dp.message_handler(lambda message: message.text == "Сплит WB")
+async def request_file(message: types.Message):
+    await message.reply("Пожалуйста, загрузите Excel файл для сплита по регионам.")
+
+@dp.message_handler(content_types=[types.ContentType.DOCUMENT])
+async def handle_document(message: types.Message):
+    document = message.document
+    if document.file_name.endswith('.xlsx'):
+        file_path = f"./{document.file_name}"
+        await document.download(destination_file=file_path)
+
+        try:
+            output_file_path = pivot_table_by_region(file_path)
+            await bot.send_document(message.chat.id, InputFile(output_file_path))
+            os.remove(file_path)
+            os.remove(output_file_path)
+        except Exception as e:
+            await message.reply(f"Произошла ошибка при обработке файла: {str(e)}")
+    else:
+        await message.reply("Пожалуйста, загрузите файл в формате .xlsx")
 
 
 def run_bot():
