@@ -698,8 +698,9 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
     DELTA_REPORT_DIR = 'delta_reports'
     api_key = os.getenv('API_TOKEN')
     myk_api_key = os.getenv('MYK_API_KEY')
-    client_id = "1043385"
-    ozon_api_key = "48a95b86-26b2-48c6-afd5-309616e8b202"
+    client_id = os.getenv('client_id')
+    ozon_api_key = os.getenv('ozon_api_key')
+
     try:
         if platform == 'wb':
             await process_wb_report(callback_query, state, api_key, myk_api_key, DELTA_REPORT_DIR, start_date, end_date,
