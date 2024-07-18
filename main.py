@@ -325,7 +325,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         # Generate inline keyboard with dates for the next 12 days
         keyboard = InlineKeyboardMarkup(row_width=3)
         current_date = datetime.now()
-        for i in range(14):
+        for i in range(12):
             date = current_date + timedelta(days=i)
             formatted_date = date.strftime('%d.%m.%Y')
             keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
@@ -342,7 +342,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         # Generate inline keyboard with dates for the next 12 days
         keyboard = InlineKeyboardMarkup(row_width=3)
         current_date = datetime.now()
-        for i in range(12):
+        for i in range(14):
             date = current_date + timedelta(days=i)
             formatted_date = date.strftime('%d.%m.%Y')
             keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
@@ -366,7 +366,7 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
     # Generate inline keyboard with dates for the next 12 days from the selected start date
     keyboard = InlineKeyboardMarkup(row_width=3)
     start_date = datetime.strptime(callback_query.data, '%d.%m.%Y')
-    for i in range(12):
+    for i in range(14):
         date = start_date + timedelta(days=i)
         formatted_date = date.strftime('%d.%m.%Y')
         keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
