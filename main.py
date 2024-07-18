@@ -26,6 +26,8 @@ from book_script import book_wh
 from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
 from get_delta_report import ReportDownloader
+from ozon_report_aggregator import OzonReportAggregator
+# from ozon_report_downloader import OzonReportDownloader
 from report_aggregation import ReportAggregator
 
 import pandas as pd
@@ -323,7 +325,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
         # Generate inline keyboard with dates for the next 12 days
         keyboard = InlineKeyboardMarkup(row_width=3)
         current_date = datetime.now()
-        for i in range(12):
+        for i in range(14):
             date = current_date + timedelta(days=i)
             formatted_date = date.strftime('%d.%m.%Y')
             keyboard.insert(InlineKeyboardButton(formatted_date, callback_data=formatted_date))
@@ -514,6 +516,7 @@ dp.middleware.setup(LoggingMiddleware())
 
 
 class DeltaFSM(StatesGroup):
+    choose_platform = State()
     choose_date_range = State()
     input_start_date = State()
     input_end_date = State()
@@ -521,7 +524,23 @@ class DeltaFSM(StatesGroup):
 
 
 @dp.message_handler(lambda message: message.text == "Дельта отчет", state="*")
-async def choose_date_range(message: types.Message):
+async def choose_platform(message: types.Message):
+    await DeltaFSM.choose_platform.set()
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("WB", callback_data="wb"),
+        InlineKeyboardButton("OZON", callback_data="ozon")
+    )
+    await message.reply(
+        text="Выберите платформу для отчета:",
+        reply_markup=keyboard
+    )
+
+@dp.callback_query_handler(lambda c: c.data in ['wb', 'ozon'], state=DeltaFSM.choose_platform)
+async def process_platform(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['platform'] = callback_query.data
+
     await DeltaFSM.choose_date_range.set()
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
@@ -529,11 +548,13 @@ async def choose_date_range(message: types.Message):
         InlineKeyboardButton("7 дней", callback_data="7"),
         InlineKeyboardButton("3 дня", callback_data="3")
     )
-    await message.reply(
+    await bot.edit_message_text(
         text="Выберите диапазон дат или предопределенный период:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
         reply_markup=keyboard
     )
-
+    await callback_query.answer()
 
 @dp.callback_query_handler(lambda c: c.data in ['range1', '7', '3'], state=DeltaFSM.choose_date_range)
 async def process_date_type(callback_query: types.CallbackQuery, state: FSMContext):
@@ -564,7 +585,6 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
             reply_markup=keyboard
         )
     await callback_query.answer()
-
 
 async def show_start_date_keyboard(callback_query, state, month):
     async with state.proxy() as data:
@@ -598,9 +618,7 @@ async def show_start_date_keyboard(callback_query, state, month):
         reply_markup=keyboard
     )
 
-
-@dp.callback_query_handler(lambda c: c.data in ['prev_month', 'next_month'],
-                           state=[DeltaFSM.input_start_date, DeltaFSM.input_end_date])
+@dp.callback_query_handler(lambda c: c.data in ['prev_month', 'next_month'], state=DeltaFSM.input_start_date)
 async def navigate_month(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         current_month_str = data['current_month']
@@ -613,7 +631,6 @@ async def navigate_month(callback_query: types.CallbackQuery, state: FSMContext)
 
     await show_start_date_keyboard(callback_query, state, new_month)
     await callback_query.answer()
-
 
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_start_date)
 async def process_start_date(callback_query: types.CallbackQuery, state: FSMContext):
@@ -648,7 +665,6 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
     )
     await callback_query.answer()
 
-
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_end_date)
 async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
@@ -672,71 +688,102 @@ async def process_end_date(callback_query: types.CallbackQuery, state: FSMContex
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_threshold)
 async def process_threshold(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
+        platform = data['platform']
         data['threshold'] = int(callback_query.data)
         start_date = data['start_date']
         end_date = data['end_date']
         threshold = data['threshold']
+
     print('Стата', start_date, end_date, threshold)
     DELTA_REPORT_DIR = 'delta_reports'
     api_key = os.getenv('API_TOKEN')
     myk_api_key = os.getenv('MYK_API_KEY')
-
+    client_id = "1043385"
+    ozon_api_key = "48a95b86-26b2-48c6-afd5-309616e8b202"
     try:
-        # Создание и загрузка отчета
-        downloader = ReportDownloader(api_key, DELTA_REPORT_DIR)
-
-        # Расчет диапазона дат
-        start_date_dt = datetime.strptime(start_date, '%d.%m.%Y')
-        end_date_dt = datetime.strptime(end_date, '%d.%m.%Y')
-        today = datetime.now()
-
-        # Вычисляем количество дней в исходном диапазоне
-        delta_days = (end_date_dt - start_date_dt).days + 1
-
-        # Расширяем диапазон на delta_days дней назад
-        extended_start_date_dt = start_date_dt - timedelta(days=delta_days)
-
-        adjusted_start_date = extended_start_date_dt.strftime('%Y-%m-%d')
-        adjusted_end_date = end_date_dt.strftime('%Y-%m-%d')
-
-        print(f"Создание отчета с датами: {adjusted_start_date} - {adjusted_end_date}")
-        report_id = downloader.create_report(adjusted_start_date, adjusted_end_date)
-
-        # Проверка статуса отчета и скачивание данных
-        if downloader.check_report_status(report_id):
-            print("Отчет готов, скачивание данных...")
-            extracted_folder = downloader.download_report(report_id)
-            csv_file_path = downloader.find_csv_file(extracted_folder)
-            print(f"CSV файл найден по пути: {csv_file_path}")
-            excel_file_path = downloader.convert_csv_to_excel(csv_file_path)
-            print(f"Excel файл сохранен по пути: {excel_file_path}")
-
-            # Обработка отчета
-            aggregator = ReportAggregator(file_path=excel_file_path, myk_key=myk_api_key, delta_threshold=threshold)
-            output_file_path, missing_nmid_file_path = aggregator.run()
-            print(f"Итоговый файл: {output_file_path}")
-            print(f"Список отсутствующих артикулов: {missing_nmid_file_path}")
-
-            await bot.send_document(
-                chat_id=callback_query.from_user.id,
-                document=open(output_file_path, 'rb'),
-                caption="Итоговый отчет"
-            )
-
-            await bot.send_document(
-                chat_id=callback_query.from_user.id,
-                document=open(missing_nmid_file_path, 'rb'),
-                caption="Список отсутствующих артикулов"
-            )
-        else:
-            print("Отчет не был успешно создан или загружен.")
-
+        if platform == 'wb':
+            await process_wb_report(callback_query, state, api_key, myk_api_key, DELTA_REPORT_DIR, start_date, end_date,
+                                    threshold)
+        elif platform == 'ozon':
+            await process_ozon_report(callback_query, state, client_id, ozon_api_key, DELTA_REPORT_DIR, start_date, end_date, threshold)
     except Exception as e:
         print(f"Ошибка: {e}")
         await bot.send_message(chat_id=callback_query.from_user.id, text=f"Произошла ошибка: {str(e)}")
 
     await state.finish()
     await callback_query.answer()
+
+
+async def process_wb_report(callback_query, state, api_key, myk_api_key, report_dir, start_date, end_date, threshold):
+    downloader = ReportDownloader(api_key, report_dir)
+
+    start_date_dt = datetime.strptime(start_date, '%d.%m.%Y')
+    end_date_dt = datetime.strptime(end_date, '%d.%m.%Y')
+
+    delta_days = (end_date_dt - start_date_dt).days + 1
+    extended_start_date_dt = start_date_dt - timedelta(days=delta_days)
+
+    adjusted_start_date = extended_start_date_dt.strftime('%Y-%m-%d')
+    adjusted_end_date = end_date_dt.strftime('%Y-%m-%d')
+
+    print(f"Создание отчета с датами: {adjusted_start_date} - {adjusted_end_date}")
+    report_id = downloader.create_report(adjusted_start_date, adjusted_end_date)
+
+    if downloader.check_report_status(report_id):
+        print("Отчет готов, скачивание данных...")
+        extracted_folder = downloader.download_report(report_id)
+        csv_file_path = downloader.find_csv_file(extracted_folder)
+        print(f"CSV файл найден по пути: {csv_file_path}")
+        excel_file_path = downloader.convert_csv_to_excel(csv_file_path)
+        print(f"Excel файл сохранен по пути: {excel_file_path}")
+
+        aggregator = ReportAggregator(file_path=excel_file_path, myk_key=myk_api_key, delta_threshold=threshold)
+        output_file_path, missing_nmid_file_path = aggregator.run()
+        print(f"Итоговый файл: {output_file_path}")
+        print(f"Список отсутствующих артикулов: {missing_nmid_file_path}")
+
+        await bot.send_document(
+            chat_id=callback_query.from_user.id,
+            document=open(output_file_path, 'rb'),
+            caption="Итоговый отчет"
+        )
+
+        await bot.send_document(
+            chat_id=callback_query.from_user.id,
+            document=open(missing_nmid_file_path, 'rb'),
+            caption="Список отсутствующих артикулов"
+        )
+    else:
+        print("Отчет не был успешно создан или загружен.")
+
+
+async def process_ozon_report(callback_query, state, client_id, api_key, report_dir, start_date, end_date, threshold):
+    print('ozon', start_date, end_date)
+
+    date_start_strp = datetime.strptime(start_date, '%d.%m.%Y')
+    date_end_strp = datetime.strptime(end_date, '%d.%m.%Y')
+
+    # Увеличение интервала в 2 раза
+    interval_days = (date_end_strp - date_start_strp).days + 1
+    previous_start_date = date_start_strp - timedelta(days=interval_days)
+    previous_start_date_formatted = previous_start_date.strftime('%d.%m.%Y')
+    start_date_formatted = date_start_strp.strftime('%d.%m.%Y')
+
+    print(f"Запрашиваем данные с {previous_start_date_formatted} по {end_date}")
+
+    # Создание агрегатора
+    aggregator = OzonReportAggregator(client_id, api_key, delta_threshold=threshold)
+
+    # Запуск агрегатора
+    output_file_path = aggregator.run(previous_start_date_formatted, end_date)
+    print(f"Итоговый файл OZON: {output_file_path}")
+
+    await bot.send_document(
+        chat_id=callback_query.from_user.id,
+        document=open(output_file_path, 'rb'),
+        caption=f"Отчет OZON с {start_date} по {end_date} с порогом дельты {threshold}%"
+    )
+    await state.finish()
 
 
 @dp.message_handler(lambda message: message.text == "Сплит WB")
