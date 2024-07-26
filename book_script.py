@@ -60,6 +60,7 @@ def check_warehouses(tasks, report):
         file_name = task['file_name']
         start_date = task['start_date']
         end_date = task.get('end_date', start_date)
+        coefficients = task.get('coefficient', [0])  # Получаем список коэффициентов, если он есть
 
         if isinstance(start_date, dict):
             start_date = datetime.strptime(start_date['$date'], "%Y-%m-%dT%H:%M:%S.%fZ").date()
@@ -80,7 +81,7 @@ def check_warehouses(tasks, report):
 
                 if (entry_warehouse_id == warehouse_id and
                         acceptance_type == 6 and
-                        coefficient == 0 and
+                        coefficient in coefficients and
                         single_date == entry_date):
                     task_with_date = {
                         "_id": task['_id'],
@@ -121,6 +122,7 @@ async def book_wh():
 
         try:
             report = get_acceptance_coefficients()
+            # print(report)
             update_task_status(collection)
             tasks = get_tasks_from_mongo()
             matched_tasks = check_warehouses(tasks, report)
@@ -167,7 +169,7 @@ async def book_wh():
                     print(error_message)
 
                 # Добавляем асинхронную задержку между задачами
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
 
         except Exception as e:
             errors.append(f"Failed to complete booking process: {e}")

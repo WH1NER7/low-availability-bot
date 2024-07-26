@@ -208,6 +208,7 @@ class BookFSM(StatesGroup):
     input_date = State()
     input_excel = State()
     choose_warehouse = State()
+    choose_coefficient = State()
 
 
 def validate_date(date_text):
@@ -403,6 +404,13 @@ async def process_date(message: types.Message, state: FSMContext):
     await bot.send_message(message.chat.id, "Пришлите Excel файл с товарами.")
 
 
+def parse_coefficient(coefficient_str):
+    # Преобразование строкового представления коэффициента в список чисел
+    if coefficient_str == "X0-3":
+        return [0, 1, 2, 3]
+    # Добавьте другие варианты коэффициентов, если они будут использоваться
+    return []
+
 @dp.message_handler(content_types=[ContentType.DOCUMENT], state=BookFSM.input_excel)
 async def process_excel(message: types.Message, state: FSMContext):
     document_id = message.document.file_id
@@ -455,18 +463,39 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
         return
 
     async with state.proxy() as data:
+        data['warehouse_id'] = warehouse_id
+        data['warehouse_name'] = warehouse_name
+
+    # Создаем клавиатуру с вариантами коэффициентов
+    coefficient_keyboard = InlineKeyboardMarkup()
+    coefficient_keyboard.add(InlineKeyboardButton("X0-3", callback_data="X0-3"))
+
+    await BookFSM.choose_coefficient.set()
+    await bot.send_message(callback_query.from_user.id, "Выберите коэффициент:", reply_markup=coefficient_keyboard)
+    await callback_query.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data in ["X0-3"], state=BookFSM.choose_coefficient)
+async def process_coefficient(callback_query: types.CallbackQuery, state: FSMContext):
+    coefficient_str = callback_query.data
+    coefficient = parse_coefficient(coefficient_str)
+
+    async with state.proxy() as data:
         date_type = data['date_type']
         user_name = data['user_name']
         file_name = data['file_name']
-
+        warehouse_name = data['warehouse_name']
+        warehouse_id = data['warehouse_id']
+        print(data)
         if date_type == "range":
             start_date, end_date = data['start_date'], data['end_date']
             start_date = datetime.strptime(start_date.strip(), '%d.%m.%Y')
             end_date = datetime.strptime(end_date.strip(), '%d.%m.%Y')
             date_info = f"Тип бронирования: Диапазон\nДата начала: {start_date.strftime('%d.%m.%Y')}\nДата окончания: {end_date.strftime('%d.%m.%Y')}"
-        else:
+        elif date_type == "single":
             start_date = end_date = datetime.strptime(data['end_date'].strip(), '%d.%m.%Y')
             date_info = f"Тип бронирования: Один день\nДата: {start_date.strftime('%d.%m.%Y')}"
+
 
         task_number = generate_random_number()  # Генерация случайного номера задачи
 
@@ -478,6 +507,7 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
             "file_name": file_name,
             "warehouse_name": warehouse_name,
             "warehouse_id": warehouse_id,
+            "coefficient": coefficient,  # Добавление коэффициента в задачу
             "status": "В процессе",
             "supply_id": 0
         }
@@ -487,7 +517,7 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
         print(f"Задача создана: {task}")
 
         await bot.edit_message_text(
-            text=f"Задача на бронирование создана.\nНомер задачи: {task_number}\n{date_info}\nСклад: {warehouse_name}",
+            text=f"Задача на бронирование создана.\nНомер задачи: {task_number}\n{date_info}\nСклад: {warehouse_name}\nКоэффициент: {coefficient}",
             chat_id=callback_query.from_user.id,
             message_id=callback_query.message.message_id
         )
@@ -825,6 +855,6 @@ if __name__ == '__main__':
     scheduler.add_job(send_notifications, 'cron', hour=17, minute=0)
 
     scheduler.add_job(send_free_whs, 'interval', minutes=3)
-    scheduler.add_job(send_booking_info, 'interval', seconds=30)
+    scheduler.add_job(send_booking_info, 'interval', seconds=10)
 
     run_bot()
