@@ -1,5 +1,5 @@
 import os
-
+import asyncio
 import requests
 from datetime import datetime, timedelta
 from pymongo import MongoClient
@@ -110,7 +110,7 @@ def update_task_status(collection):
             collection.update_one({"_id": task['_id']}, {"$set": {"status": "Провалено"}})
 
 
-def book_wh():
+async def book_wh():
     successful_bookings = []
     errors = []
 
@@ -128,8 +128,8 @@ def book_wh():
             for task in matched_tasks:
                 try:
                     print(f"Processing task: {task}")
-                    supply_status, supply_id = process_supply(task.get('date'), task.get('warehouse_id'),
-                                                              task.get('file_name'), cookie)
+                    supply_status, supply_id = await process_supply(task.get('date'), task.get('warehouse_id'),
+                                                                    task.get('file_name'), cookie)
                     if supply_status:
                         print(f"Supply status successful for task: {task}")
                         task_details = collection.find_one({"_id": task['_id']})
@@ -165,6 +165,9 @@ def book_wh():
                     error_message = f"Booking failed for task {task}: {e}"
                     errors.append(error_message)
                     print(error_message)
+
+                # Добавляем асинхронную задержку между задачами
+                await asyncio.sleep(3)
 
         except Exception as e:
             errors.append(f"Failed to complete booking process: {e}")

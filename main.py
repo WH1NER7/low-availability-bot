@@ -502,7 +502,7 @@ async def notify_users(message, user_ids):
 
 
 async def send_booking_info():
-    successful_bookings, errors = book_wh()
+    successful_bookings, errors = await book_wh()
     for booking in successful_bookings:
         message = f"Поставка {booking['supply_id']} создана. Дата: {booking['date_range']}. {booking['warehouse_name']}."
         await notify_users(message, booking['user_ids'])
