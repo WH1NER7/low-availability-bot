@@ -35,7 +35,7 @@ def send_request():
         "jsonrpc": "2.0",
         "id": "json-rpc_16"
     }
-    print('работаю')
+
     response = requests.post(url, json=payload, headers=headers)
 
     if response.status_code == 200:

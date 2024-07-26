@@ -54,6 +54,9 @@ class ReportAggregator:
         result_df['buyoutsCount_current'] = pd.to_numeric(result_df['buyoutsCount_current'], errors='coerce').fillna(0)
         result_df['buyoutsCount_previous'] = pd.to_numeric(result_df['buyoutsCount_previous'], errors='coerce').fillna(0)
 
+        # Фильтрация заказов, чтобы учитывались только те, у которых количество заказов как в текущем, так и в предыдущем периоде больше или равно 10
+        result_df = result_df[(result_df['ordersCount_current'] >= 10) & (result_df['ordersCount_previous'] >= 10)]
+
         # Проверка наличия каждого артикула в каждом из 10 дней
         missing_nmid = []
         for nmID in result_df['nmID']:
@@ -87,10 +90,10 @@ class ReportAggregator:
 
         # Преобразование данных API в DataFrame
         items_df = pd.DataFrame(items_data)
-        items_df = items_df[['nm', 'item_category', 'item_name']]
+        items_df = items_df[['nm', 'item_category', 'item_name', 'article']]
 
         items_df = items_df.drop_duplicates(subset='nm')
-        items_df.columns = ['nmID', 'Категория', 'Название']
+        items_df.columns = ['nmID', 'Категория', 'Название', 'Артикул']
 
         # Объединение данных с результатами агрегации
         final_df = pd.merge(items_df, result_df, on='nmID', how='right')
@@ -100,13 +103,13 @@ class ReportAggregator:
             str) + '/detail.aspx?targetUrl=SP'
 
         # Переупорядочение столбцов
-        final_df = final_df[['Категория', 'Название', 'nmID', 'Ссылка',
+        final_df = final_df[['Категория', 'Название', 'Артикул', 'nmID', 'Ссылка',
                              'ordersCount_current', 'ordersCount_previous', 'orders_delta', 'orders_percent_change',
                              'buyoutsCount_current', 'buyoutsCount_previous', 'buyouts_delta',
                              'buyouts_percent_change']]
 
         # Переименование столбцов
-        final_df.columns = ['Категория', 'Название', 'Артикул', 'Ссылка',
+        final_df.columns = ['Категория', 'Название', 'Артикул', 'nmID', 'Ссылка',
                             f'Заказы текущий период ({first_period_str})',
                             f'Заказы предыдущий период ({second_period_str})',
                             'Дельта заказов', 'Процент отклонения заказов',
@@ -155,10 +158,3 @@ class ReportAggregator:
         print(f"Список отсутствующих артикулов сохранен как {missing_nmid_file_path}")
 
         return output_file_path, missing_nmid_file_path
-
-
-# # Пример использования
-# file_path = 'path_to_your_file.xlsx'  # Замените на путь к вашему файлу
-# myk_key = 'your_myk_key'  # Замените на ваш API ключ
-# aggregator = ReportAggregator(file_path, myk_key)
-# aggregator.run()

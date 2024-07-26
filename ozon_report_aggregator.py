@@ -3,6 +3,8 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 from datetime import datetime
+import aiohttp
+import asyncio
 
 class OzonReportAggregator:
     def __init__(self, client_id, api_key, delta_threshold=0):
@@ -10,6 +12,11 @@ class OzonReportAggregator:
         self.api_key = api_key
         self.delta_threshold = delta_threshold
         self.base_url = "https://api-seller.ozon.ru/v1/analytics/data"
+
+    async def get_additional_data(self, url):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                return await resp.json()
 
     def get_report_data(self, date_from, date_to):
         url = self.base_url
@@ -60,7 +67,7 @@ class OzonReportAggregator:
 
         return all_data
 
-    def run(self, date_start, date_end):
+    async def run(self, date_start, date_end):
         date_start_strp = datetime.strptime(date_start, '%d.%m.%Y')
         date_end_strp = datetime.strptime(date_end, '%d.%m.%Y')
 
@@ -79,7 +86,7 @@ class OzonReportAggregator:
             metrics = item.get('metrics', [0, 0])
             dimensions = item.get('dimensions', [])
             processed_data.append({
-                'SKU': dimensions[0]['id'] if dimensions else None,
+                'SKU': str(dimensions[0]['id']) if dimensions else None,  # Преобразование SKU в строку
                 'Date': dimensions[1]['id'] if len(dimensions) > 1 else None,
                 'Ordered Units': metrics[0],
                 'Delivered Units': metrics[1]
@@ -102,8 +109,9 @@ class OzonReportAggregator:
             raise ValueError("Выбранный период слишком короткий для сравнения")
 
         # Определение текущего периода и предыдущего периода
-        current_period_dates = unique_dates[len(unique_dates) // 2:]
-        previous_period_dates = unique_dates[:len(unique_dates) // 2]
+        midpoint = len(unique_dates) // 2
+        current_period_dates = unique_dates[midpoint:]
+        previous_period_dates = unique_dates[:midpoint]
 
         current_period_str = f"{current_period_dates.min().strftime('%d.%m')}-{current_period_dates.max().strftime('%d.%m')}"
         previous_period_str = f"{previous_period_dates.min().strftime('%d.%m')}-{previous_period_dates.max().strftime('%d.%m')}"
@@ -125,14 +133,14 @@ class OzonReportAggregator:
         print("Агрегированные данные текущего периода:", current_period_aggregated.head())
         print("Агрегированные данные предыдущего периода:", previous_period_aggregated.head())
 
-        # Проверка итоговых сумм по заказам и доставкам перед объединением
+        # Проверка итоговых сумм по заказам и выкупам перед объединением
         current_period_total_orders = current_period_aggregated['ordered_units'].sum()
         previous_period_total_orders = previous_period_aggregated['ordered_units'].sum()
         current_period_total_deliveries = current_period_aggregated['delivered_units'].sum()
         previous_period_total_deliveries = previous_period_aggregated['delivered_units'].sum()
 
-        print(f"Текущий период ({current_period_str}) - Заказы: {current_period_total_orders}, Доставки: {current_period_total_deliveries}")
-        print(f"Предыдущий период ({previous_period_str}) - Заказы: {previous_period_total_orders}, Доставки: {previous_period_total_deliveries}")
+        print(f"Текущий период ({current_period_str}) - Заказы: {current_period_total_orders}, Выкупы: {current_period_total_deliveries}")
+        print(f"Предыдущий период ({previous_period_str}) - Заказы: {previous_period_total_orders}, Выкупы: {previous_period_total_deliveries}")
 
         # Переименуем столбцы для ясности
         current_period_aggregated.columns = ['SKU', 'ordered_units_current', 'delivered_units_current']
@@ -148,12 +156,15 @@ class OzonReportAggregator:
         result_df['delivered_units_current'] = pd.to_numeric(result_df['delivered_units_current'], errors='coerce').fillna(0)
         result_df['delivered_units_previous'] = pd.to_numeric(result_df['delivered_units_previous'], errors='coerce').fillna(0)
 
-        # Проверка итоговых сумм по заказам и доставкам после объединения
+        # Проверка итоговых сумм по заказам и выкупам после объединения
         merged_total_orders = result_df['ordered_units_current'].sum() + result_df['ordered_units_previous'].sum()
         merged_total_deliveries = result_df['delivered_units_current'].sum() + result_df['delivered_units_previous'].sum()
 
         print(f"Итоговая сумма заказов после объединения: {merged_total_orders}")
-        print(f"Итоговая сумма доставок после объединения: {merged_total_deliveries}")
+        print(f"Итоговая сумма выкупов после объединения: {merged_total_deliveries}")
+
+        # Фильтрация строк с минимальным числом заказов меньше 5
+        result_df = result_df[(result_df['ordered_units_current'] >= 5) & (result_df['ordered_units_previous'] >= 5)]
 
         # Добавление дельты и процента отклонения
         result_df['ordered_units_delta'] = result_df['ordered_units_current'] - result_df['ordered_units_previous']
@@ -169,22 +180,46 @@ class OzonReportAggregator:
         filtered_result_df = result_df[result_df['ordered_units_percent_change'].abs() > self.delta_threshold]
         print("Данные после фильтрации:", filtered_result_df.head())
 
-        # Проверка итоговых сумм по заказам и доставкам после фильтрации
-        filtered_total_orders = filtered_result_df['ordered_units_current'].sum() + filtered_result_df['ordered_units_previous'].sum()
-        filtered_total_deliveries = filtered_result_df['delivered_units_current'].sum() + filtered_result_df['delivered_units_previous'].sum()
+        # Получение дополнительных данных асинхронно
+        additional_data_url = 'http://217.25.93.96/ozon_skus_fbo?company=missyourkiss'
+        additional_data = await self.get_additional_data(additional_data_url)
 
-        print(f"Итоговая сумма заказов после фильтрации: {filtered_total_orders}")
-        print(f"Итоговая сумма доставок после фильтрации: {filtered_total_deliveries}")
+        additional_df = pd.DataFrame(additional_data)
+        additional_df['sku'] = additional_df['sku'].astype(str)  # Преобразование SKU в строку
+        additional_df = additional_df[['sku', 'offer_id', 'link', 'name', 'fbo_sku']]
+        additional_df.columns = ['SKU', 'Offer ID', 'Link', 'Name', 'FBO SKU']
+
+        # Преобразование SKU в строку
+        filtered_result_df.loc[:, 'SKU'] = filtered_result_df['SKU'].astype(str)
+
+        # Объединение дополнительных данных с основными данными
+        final_df = pd.merge(filtered_result_df, additional_df, on='SKU', how='left')
+
+        # Проверка и объединение по FBO SKU, если SKU не совпадает
+        missing_data = final_df[final_df['Offer ID'].isna()]
+        if not missing_data.empty:
+            missing_skus = missing_data['SKU'].tolist()
+            # Преобразование FBO SKU в строку перед сравнением
+            additional_df['FBO SKU'] = additional_df['FBO SKU'].astype(str)
+            additional_fbo_df = additional_df[additional_df['FBO SKU'].isin(missing_skus)]
+            additional_fbo_df = additional_fbo_df[['FBO SKU', 'Offer ID', 'Link', 'Name']]
+            additional_fbo_df.columns = ['SKU', 'Offer ID', 'Link', 'Name']
+            final_df = pd.merge(final_df, additional_fbo_df, on='SKU', how='left', suffixes=('', '_fbo'))
+            final_df['Offer ID'] = final_df['Offer ID'].combine_first(final_df['Offer ID_fbo'])
+            final_df['Link'] = final_df['Link'].combine_first(final_df['Link_fbo'])
+            final_df['Name'] = final_df['Name'].combine_first(final_df['Name_fbo'])
+            final_df = final_df.drop(columns=['Offer ID_fbo', 'Link_fbo', 'Name_fbo'])
 
         # Переупорядочение столбцов
-        final_df = filtered_result_df[['SKU', 'ordered_units_current', 'ordered_units_previous', 'ordered_units_delta', 'ordered_units_percent_change',
-                             'delivered_units_current', 'delivered_units_previous', 'delivered_units_delta', 'delivered_units_percent_change']]
+        final_df = final_df[['SKU', 'Offer ID', 'Link', 'Name', 'ordered_units_current', 'ordered_units_previous',
+                             'ordered_units_delta', 'ordered_units_percent_change', 'delivered_units_current',
+                             'delivered_units_previous', 'delivered_units_delta', 'delivered_units_percent_change']]
 
         # Переименование столбцов
-        final_df.columns = ['SKU', f'Заказы текущий период ({current_period_str})', f'Заказы предыдущий период ({previous_period_str})',
-                            'Дельта заказов', 'Процент отклонения заказов',
-                            f'Доставки текущий период ({current_period_str})', f'Доставки предыдущий период ({previous_period_str})',
-                            'Дельта доставок', 'Процент отклонения доставок']
+        final_df.columns = ['nmID', 'Артикул', 'Ссылка', 'Название', f'Заказы текущий период ({current_period_str})',
+                            f'Заказы предыдущий период ({previous_period_str})', 'Дельта заказов', 'Процент отклонения заказов',
+                            f'Выкупы текущий период ({current_period_str})', f'Выкупы предыдущий период ({previous_period_str})',
+                            'Дельта выкупов', 'Процент отклонения выкупов']
 
         # Сохранение итогового результата в Excel
         output_file_path = f"{current_period_str} - Ozon Delta.xlsx"
@@ -200,15 +235,15 @@ class OzonReportAggregator:
         green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
 
         # Применение заливки для процентного отклонения заказов
-        for row in ws.iter_rows(min_row=2, min_col=5, max_col=5, max_row=ws.max_row):
+        for row in ws.iter_rows(min_row=2, min_col=8, max_col=8, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill
                 elif cell.value < 0:
                     cell.fill = red_fill
 
-        # Применение заливки для процентного отклонения доставок
-        for row in ws.iter_rows(min_row=2, min_col=9, max_col=9, max_row=ws.max_row):
+        # Применение заливки для процентного отклонения выкупов
+        for row in ws.iter_rows(min_row=2, min_col=12, max_col=12, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill

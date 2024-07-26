@@ -127,10 +127,13 @@ def book_wh():
 
             for task in matched_tasks:
                 try:
+                    print(f"Processing task: {task}")
                     supply_status, supply_id = process_supply(task.get('date'), task.get('warehouse_id'),
                                                               task.get('file_name'), cookie)
                     if supply_status:
+                        print(f"Supply status successful for task: {task}")
                         task_details = collection.find_one({"_id": task['_id']})
+                        print(f"Task details: {task_details}")
                         start_date = task_details['start_date']
                         if isinstance(start_date, dict):
                             start_date = start_date['$date']
@@ -168,3 +171,4 @@ def book_wh():
             print(f"Failed to complete booking process: {e}")
 
     return successful_bookings, errors
+

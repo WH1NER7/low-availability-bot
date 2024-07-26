@@ -706,13 +706,16 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
             await process_wb_report(callback_query, state, api_key, myk_api_key, DELTA_REPORT_DIR, start_date, end_date,
                                     threshold)
         elif platform == 'ozon':
-            await process_ozon_report(callback_query, state, client_id, ozon_api_key, DELTA_REPORT_DIR, start_date, end_date, threshold)
+            aggregator = OzonReportAggregator(client_id, ozon_api_key, threshold)
+            output_file_path = await aggregator.run(start_date, end_date)
+            await bot.send_document(chat_id=callback_query.from_user.id, document=open(output_file_path, 'rb'))
     except Exception as e:
         print(f"Ошибка: {e}")
         await bot.send_message(chat_id=callback_query.from_user.id, text=f"Произошла ошибка: {str(e)}")
 
     await state.finish()
     await callback_query.answer()
+
 
 
 async def process_wb_report(callback_query, state, api_key, myk_api_key, report_dir, start_date, end_date, threshold):
@@ -749,11 +752,11 @@ async def process_wb_report(callback_query, state, api_key, myk_api_key, report_
             caption="Итоговый отчет"
         )
 
-        await bot.send_document(
-            chat_id=callback_query.from_user.id,
-            document=open(missing_nmid_file_path, 'rb'),
-            caption="Список отсутствующих артикулов"
-        )
+        # await bot.send_document(
+        #     chat_id=callback_query.from_user.id,
+        #     document=open(missing_nmid_file_path, 'rb'),
+        #     caption="Список отсутствующих артикулов"
+        # )
     else:
         print("Отчет не был успешно создан или загружен.")
 
