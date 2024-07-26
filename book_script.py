@@ -128,8 +128,8 @@ async def book_wh():
             for task in matched_tasks:
                 try:
                     print(f"Processing task: {task}")
-                    supply_status, supply_id = await process_supply(task.get('date'), task.get('warehouse_id'),
-                                                                    task.get('file_name'), cookie)
+                    supply_status, supply_id = await asyncio.to_thread(process_supply, task.get('date'), task.get('warehouse_id'),
+                                                                       task.get('file_name'), cookie)
                     if supply_status:
                         print(f"Supply status successful for task: {task}")
                         task_details = collection.find_one({"_id": task['_id']})
@@ -167,7 +167,7 @@ async def book_wh():
                     print(error_message)
 
                 # Добавляем асинхронную задержку между задачами
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
 
         except Exception as e:
             errors.append(f"Failed to complete booking process: {e}")
