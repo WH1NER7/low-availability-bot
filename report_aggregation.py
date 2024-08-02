@@ -90,10 +90,10 @@ class ReportAggregator:
 
         # Преобразование данных API в DataFrame
         items_df = pd.DataFrame(items_data)
-        items_df = items_df[['nm', 'item_category', 'item_name', 'article']]
+        items_df = items_df[['nm', 'item_category', 'item_name', 'article', 'size']]
 
         items_df = items_df.drop_duplicates(subset='nm')
-        items_df.columns = ['nmID', 'Категория', 'Название', 'Артикул']
+        items_df.columns = ['nmID', 'Категория', 'Название', 'Артикул', 'Размер']
 
         # Объединение данных с результатами агрегации
         final_df = pd.merge(items_df, result_df, on='nmID', how='right')
@@ -103,13 +103,13 @@ class ReportAggregator:
             str) + '/detail.aspx?targetUrl=SP'
 
         # Переупорядочение столбцов
-        final_df = final_df[['Категория', 'Название', 'Артикул', 'nmID', 'Ссылка',
+        final_df = final_df[['Категория', 'Название', 'Артикул', 'Размер', 'nmID', 'Ссылка',
                              'ordersCount_current', 'ordersCount_previous', 'orders_delta', 'orders_percent_change',
                              'buyoutsCount_current', 'buyoutsCount_previous', 'buyouts_delta',
                              'buyouts_percent_change']]
 
         # Переименование столбцов
-        final_df.columns = ['Категория', 'Название', 'Артикул', 'nmID', 'Ссылка',
+        final_df.columns = ['Категория', 'Название', 'Артикул', 'Размер', 'nmID', 'Ссылка',
                             f'Заказы текущий период ({first_period_str})',
                             f'Заказы предыдущий период ({second_period_str})',
                             'Дельта заказов', 'Процент отклонения заказов',

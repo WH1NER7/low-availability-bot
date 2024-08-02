@@ -100,6 +100,7 @@ def fetch_warehouse_ids(warehouse_names):
     }
 
     response = requests.post(url, headers=headers, json=body)
+    print(response.status_code)
     data = response.json()
 
     results = data.get("result", {}).get("report", [])
