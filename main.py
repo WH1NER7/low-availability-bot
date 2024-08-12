@@ -3,6 +3,8 @@ import os
 import random
 from aiogram.types import ParseMode
 
+from celery_app import async_task_test
+
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
 import bson
@@ -22,19 +24,19 @@ from bson import ObjectId
 from pymongo import MongoClient
 import openpyxl
 
-from associated_advertisement_goods import collect_data
+
 from book_script import book_wh
 from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
 from get_delta_report import ReportDownloader
 from ozon_report_aggregator import OzonReportAggregator
-# from ozon_report_downloader import OzonReportDownloader
+
 from report_aggregation import ReportAggregator
 
 import pandas as pd
 from collections import defaultdict
 
-from tasks import add
+
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 cookie = os.getenv('COOKIE')
@@ -875,16 +877,9 @@ async def handle_document(message: types.Message):
 
 
 @dp.message_handler(commands=['test'])
-async def test_command(message: types.Message):
-    await message.reply("Данные собираются, это может занять некоторое время...")
-    # Запуск задачи Celery
-    task = add.delay(2, 2)
-
-    # Ожидание завершения задачи
-    result = task.get(timeout=10)
-
-    # Отправка результата пользователю
-    await message.reply(f'Результат: {result}')
+async def send_welcome(message: types.Message):
+    task = async_task_test.delay(5, 7)  # Вызов асинхронной задачи
+    await message.reply(f"Задача отправлена! Результат будет {task.get()}")
 
 def run_bot():
     scheduler.start()
