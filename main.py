@@ -22,6 +22,7 @@ from bson import ObjectId
 from pymongo import MongoClient
 import openpyxl
 
+from associated_advertisement_goods import collect_data
 from book_script import book_wh
 from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
@@ -32,6 +33,8 @@ from report_aggregation import ReportAggregator
 
 import pandas as pd
 from collections import defaultdict
+
+from tasks import collect_data_task
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 cookie = os.getenv('COOKIE')
@@ -191,13 +194,13 @@ async def on_start(message: types.Message):
     # Создание клавиатуры в зависимости от user_id
     if user_id in user_ids_whs and user_id in user_ids_extra:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Сплит WB"))
+        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Сплит WB"), types.KeyboardButton("Ассоц товары"))
     elif user_id in user_ids_whs:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Сплит WB"))
     elif user_id in user_ids_extra:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("Дельта отчет"))
+        keyboard.add(types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Ассоц товары"))
 
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -842,6 +845,33 @@ async def handle_document(message: types.Message):
     else:
         await message.reply("Пожалуйста, загрузите файл в формате .xlsx")
 
+
+# Хендлер для вызова collect_data и отправки файла
+@dp.message_handler(lambda message: message.text == "Ассоц товары")
+async def send_data(message: types.Message):
+    # Устанавливаем даты
+    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+    end_date = datetime.now().strftime('%Y-%m-%d')
+    api_key = os.getenv('API_TOKEN')
+    authorizev3 = os.getenv('authorizev3')
+    cookie = os.getenv('COOKIE')
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+    company_api_key = os.getenv("MYK_API_KEY")
+    await message.reply("Данные собираются, это может занять некоторое время...")
+
+    # Запуск задачи в Celery
+    task = collect_data_task.delay(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
+
+    try:
+        # Ожидание завершения задачи
+        result = task.get(timeout=1000)
+
+        # Отправка файла пользователю
+        with open(result, 'rb') as file:
+            await message.answer_document(InputFile(file))
+
+    except Exception as e:
+        await message.reply(f"Произошла ошибка при сборе данных: {str(e)}")
 
 def run_bot():
     scheduler.start()
