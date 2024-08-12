@@ -2,7 +2,6 @@
 # from associated_advertisement_goods import collect_data
 from celery_config import app
 
-
 @app.task(name='tasks.add')
 def add(x, y):
     return x + y
