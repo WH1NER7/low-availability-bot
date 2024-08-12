@@ -34,7 +34,7 @@ from report_aggregation import ReportAggregator
 import pandas as pd
 from collections import defaultdict
 
-from tasks import collect_data_task
+from tasks import collect_data_task, add
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 cookie = os.getenv('COOKIE')
@@ -872,6 +872,18 @@ async def send_data(message: types.Message):
 
     except Exception as e:
         await message.reply(f"Произошла ошибка при сборе данных: {str(e)}")
+
+
+@dp.message_handler(commands=['test'])
+async def test_command(message: types.Message):
+    # Запуск задачи Celery
+    task = add.delay(2, 2)
+
+    # Ожидание завершения задачи
+    result = task.get(timeout=10)
+
+    # Отправка результата пользователю
+    await message.reply(f'Результат: {result}')
 
 def run_bot():
     scheduler.start()

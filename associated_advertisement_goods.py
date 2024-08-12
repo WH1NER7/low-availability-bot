@@ -3,10 +3,11 @@ import os
 import requests
 import json
 import pandas as pd
-from datetime import datetime, timedelta
+
 import time
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
+
 
 # Функция для получения списка рекламных кампаний со статусом 9
 def get_active_advertisements(api_key):
@@ -201,10 +202,3 @@ def get_campaign_name(authorizev3, cookie, user_agent, advert_id):
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError for advert_id {advert_id}: {e}")
         return "N/A"
-
-
-# Параметры
-
-
-# Запуск функции
-# collect_data(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
