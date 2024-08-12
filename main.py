@@ -876,6 +876,7 @@ async def send_data(message: types.Message):
 
 @dp.message_handler(commands=['test'])
 async def test_command(message: types.Message):
+    await message.reply("Данные собираются, это может занять некоторое время...")
     # Запуск задачи Celery
     task = add.delay(2, 2)
 
