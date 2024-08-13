@@ -29,6 +29,7 @@ from book_script import book_wh
 from book_warehouse import COLOR_ORDER
 from free_whs_parser import send_request
 from get_delta_report import ReportDownloader
+from handlers import send_data
 from ozon_report_aggregator import OzonReportAggregator
 
 from report_aggregation import ReportAggregator
@@ -848,32 +849,9 @@ async def handle_document(message: types.Message):
         await message.reply("Пожалуйста, загрузите файл в формате .xlsx")
 
 
-# Хендлер для вызова collect_data и отправки файла
 @dp.message_handler(lambda message: message.text == "Ассоц товары")
-async def send_data(message: types.Message):
-    # Устанавливаем даты
-    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    api_key = os.getenv('API_TOKEN')
-    authorizev3 = os.getenv('authorizev3')
-    cookie = os.getenv('COOKIE')
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
-    company_api_key = os.getenv("MYK_API_KEY")
-    await message.reply("Данные собираются, это может занять некоторое время...")
-
-    # Запуск задачи в Celery
-    task = collect_data_task.delay(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
-
-    try:
-        # Ожидание завершения задачи
-        result = task.get(timeout=1000)
-
-        # Отправка файла пользователю
-        with open(result, 'rb') as file:
-            await message.answer_document(InputFile(file))
-
-    except Exception as e:
-        await message.reply(f"Произошла ошибка при сборе данных: {str(e)}")
+async def handle_associated_goods(message: types.Message):
+    await send_data(message)
 
 
 @dp.message_handler(commands=['test'])
