@@ -207,16 +207,16 @@ def get_campaign_name(authorizev3, cookie, user_agent, advert_id):
         return "N/A"
 
 
-start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
-end_date = datetime.now().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
-
-# Замена символов ":" на "%3A"
-start_date = start_date.replace(':', '%3A')
-end_date = end_date.replace(':', '%3A')
-
-api_key = os.getenv('API_TOKEN')
-authorizev3 = os.getenv('authorizev3')
-cookie = os.getenv('COOKIE')
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
-company_api_key = os.getenv("MYK_API_KEY")
-collect_data(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
+# start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+# end_date = datetime.now().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+#
+# # Замена символов ":" на "%3A"
+# start_date = start_date.replace(':', '%3A')
+# end_date = end_date.replace(':', '%3A')
+#
+# api_key = os.getenv('API_TOKEN')
+# authorizev3 = os.getenv('authorizev3')
+# cookie = os.getenv('COOKIE')
+# user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+# company_api_key = os.getenv("MYK_API_KEY")
+# collect_data(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)

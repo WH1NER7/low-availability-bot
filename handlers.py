@@ -5,8 +5,13 @@ import os
 
 
 async def send_data(message: types.Message):
-    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
-    end_date = datetime.now().strftime('%Y-%m-%d')
+    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+    end_date = datetime.now().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+
+    # Замена символов ":" на "%3A"
+    start_date = start_date.replace(':', '%3A')
+    end_date = end_date.replace(':', '%3A')
+
     api_key = os.getenv('API_TOKEN')
     authorizev3 = os.getenv('authorizev3')
     cookie = os.getenv('COOKIE')
