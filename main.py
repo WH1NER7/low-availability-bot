@@ -3,7 +3,7 @@ import os
 import random
 from aiogram.types import ParseMode
 
-from celery_app import async_task_test
+from celery_app import async_task_test, collect_data_task
 
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
@@ -862,7 +862,7 @@ async def send_data(message: types.Message):
     await message.reply("Данные собираются, это может занять некоторое время...")
 
     # Запуск задачи в Celery
-    task = async_task_test.delay(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
+    task = collect_data_task.delay(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
 
     try:
         # Ожидание завершения задачи
