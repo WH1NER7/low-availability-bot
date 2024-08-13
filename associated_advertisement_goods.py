@@ -135,7 +135,7 @@ def collect_data(company_api_key, api_key, start_date, end_date, authorizev3, co
             all_stats.extend(advert_stats)
 
         # Секундная задержка между запросами
-        time.sleep(1)
+        time.sleep(10)
 
     all_stats_df = pd.DataFrame(all_stats)
 
