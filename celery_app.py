@@ -20,5 +20,9 @@ def collect_data_task(company_api_key, api_key, start_date, end_date, authorizev
 
 @celery_app.task(name='celery_app.on_task_complete')
 def on_task_complete(chat_id, result):
-    with open(result, 'rb') as file:
-        bot.send_document(chat_id, InputFile(file))
+    if not os.path.exists(result):
+        raise FileNotFoundError(f"Файл не найден: {result}")
+
+    bot.send_document(chat_id, InputFile(result))
+
+
