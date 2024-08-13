@@ -18,11 +18,15 @@ def collect_data_task(company_api_key, api_key, start_date, end_date, authorizev
     return collect_data(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)
 
 
+
 @celery_app.task(name='celery_app.on_task_complete')
 def on_task_complete(chat_id, result):
+    print(f"Result: {result}, Chat ID: {chat_id}")  # Добавьте это для отладки
+
     if not os.path.exists(result):
         raise FileNotFoundError(f"Файл не найден: {result}")
 
     bot.send_document(chat_id, InputFile(result))
+
 
 
