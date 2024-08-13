@@ -24,7 +24,7 @@ def on_task_complete(chat_id, result):
     print(f"Result: {result}, Chat ID: {chat_id}")  # Добавьте это для отладки
 
     if not os.path.exists(result):
-        raise FileNotFoundError(f"Файл не найден: {result}")
+        raise FileNotFoundError(f"Result: {result}, Chat ID: {chat_id}")
 
     bot.send_document(chat_id, InputFile(result))
 
