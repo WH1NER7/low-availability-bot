@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 
 import requests
 import json
@@ -16,6 +17,7 @@ def get_active_advertisements(api_key):
         "Authorization": api_key
     }
     response = requests.get(url, headers=headers)
+    print(response.status_code)
     adverts = response.json().get('adverts', [])
 
     advert_ids = []
@@ -53,7 +55,7 @@ def get_article_map(api_key):
 def get_advert_statistics(company_api_key, api_key, authorizev3, cookie, user_agent, advert_id, start_date, end_date):
     # Получение маппинга nm_id -> article
     article_map = get_article_map(company_api_key)
-
+    print(start_date, end_date)
     url = f"https://cmp.wildberries.ru/api/v5/fullstat?advertID={advert_id}&from={start_date}&to={end_date}&appType=0&placementType=0"
     headers = {
         "Authorizev3": authorizev3,
@@ -64,6 +66,7 @@ def get_advert_statistics(company_api_key, api_key, authorizev3, cookie, user_ag
 
     try:
         print(response.status_code)
+        print(response.text)
         data = response.json().get('content', {})
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError for advert_id {advert_id}: {e}")
@@ -132,7 +135,7 @@ def collect_data(company_api_key, api_key, start_date, end_date, authorizev3, co
             all_stats.extend(advert_stats)
 
         # Секундная задержка между запросами
-        time.sleep(10)
+        time.sleep(1)
 
     all_stats_df = pd.DataFrame(all_stats)
 
@@ -202,3 +205,18 @@ def get_campaign_name(authorizev3, cookie, user_agent, advert_id):
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError for advert_id {advert_id}: {e}")
         return "N/A"
+
+
+start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+end_date = datetime.now().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+
+# Замена символов ":" на "%3A"
+start_date = start_date.replace(':', '%3A')
+end_date = end_date.replace(':', '%3A')
+
+api_key = os.getenv('API_TOKEN')
+authorizev3 = os.getenv('authorizev3')
+cookie = os.getenv('COOKIE')
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+company_api_key = os.getenv("MYK_API_KEY")
+collect_data(company_api_key, api_key, start_date, end_date, authorizev3, cookie, user_agent)

@@ -3,6 +3,7 @@ from celery_app import collect_data_task, on_task_complete
 from datetime import datetime, timedelta
 import os
 
+
 async def send_data(message: types.Message):
     start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
     end_date = datetime.now().strftime('%Y-%m-%d')
