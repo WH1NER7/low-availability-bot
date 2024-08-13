@@ -20,7 +20,7 @@ def collect_data_task(company_api_key, api_key, start_date, end_date, authorizev
 
 
 @celery_app.task(name='celery_app.on_task_complete')
-def on_task_complete(chat_id, result):
+def on_task_complete(result, chat_id):
     print(f"Result: {result}, Chat ID: {chat_id}")  # Добавьте это для отладки
 
     if not os.path.exists(result):
