@@ -270,8 +270,10 @@ def generate_random_number():
     return random.randint(1000000, 9999999)
 
 
+PAGE_SIZE = 10
+
 @dp.message_handler(lambda message: message.text == "Удалить задачу на поставку", state="*")
-async def delete_booking_task(message: types.Message):
+async def delete_booking_task(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
     # Проверяем, является ли пользователь одним из управляющих складами
@@ -286,9 +288,18 @@ async def delete_booking_task(message: types.Message):
         await message.answer("Нет задач на бронирование поставки в процессе.")
         return
 
+    # Сохраняем задачи и текущую страницу в состоянии
+    await state.update_data(tasks=tasks, page=0)
+    await send_task_page(message, tasks, 0)
+
+async def send_task_page(message: types.Message, tasks, page):
+    # Рассчитываем начальный и конечный индекс для текущей страницы
+    start_index = page * PAGE_SIZE
+    end_index = min(start_index + PAGE_SIZE, len(tasks))
+
     # Создаем клавиатуру с вариантами задач для удаления
     keyboard = InlineKeyboardMarkup()
-    for task in tasks:
+    for task in tasks[start_index:end_index]:
         start_date = task['start_date'].strftime('%Y-%m-%d')
         end_date = task['end_date'].strftime('%Y-%m-%d')
         keyboard.add(InlineKeyboardButton(
@@ -296,7 +307,34 @@ async def delete_booking_task(message: types.Message):
             callback_data=str(task['_id'])
         ))
 
+    # Добавляем кнопки для переключения страниц
+    if page > 0:
+        keyboard.add(InlineKeyboardButton("<<", callback_data="prev_page"))
+    if end_index < len(tasks):
+        keyboard.add(InlineKeyboardButton(">>", callback_data="next_page"))
+
+    # Отправляем сообщение с клавиатурой
     await message.answer("Выберите задачу для удаления:", reply_markup=keyboard)
+
+@dp.callback_query_handler(lambda call: call.data in ["prev_page", "next_page"])
+async def paginate_tasks(call: types.CallbackQuery, state: FSMContext):
+    # Получаем данные из состояния
+    data = await state.get_data()
+    tasks = data.get("tasks")
+    page = data.get("page", 0)
+
+    # Определяем новую страницу
+    if call.data == "prev_page":
+        page = max(0, page - 1)
+    elif call.data == "next_page":
+        page = min((len(tasks) - 1) // PAGE_SIZE, page + 1)
+
+    # Обновляем страницу в состоянии и отправляем новую страницу задач
+    await state.update_data(page=page)
+    await send_task_page(call.message, tasks, page)
+
+    # Удаляем исходное сообщение, чтобы не дублировать
+    await call.message.delete()
 
 
 @dp.callback_query_handler(lambda c: bson.ObjectId.is_valid(c.data))
