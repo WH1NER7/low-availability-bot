@@ -130,7 +130,7 @@ warehouse_names = [
     "Астана", "Белые Столбы", "Тула",
     "СЦ Пушкино", "Невинномысск", "Алматы Атакент",
     "Санкт-Петербург (Уткина Заводь)", "Краснодар (Тихорецкая)",
-    "Екатеринбург - Испытателей 14г", "Екатеринбург - Перспективный 12/2"
+    "Екатеринбург - Испытателей 14г", "Екатеринбург - Перспективный 12/2", "Подольск 4"
 ]
 
 # Список складов
@@ -209,6 +209,7 @@ async def on_start(message: types.Message):
 
 
 class BookFSM(StatesGroup):
+    choose_company = State()
     choose_date_range = State()
     input_start_date = State()
     input_end_date = State()
@@ -216,6 +217,7 @@ class BookFSM(StatesGroup):
     input_excel = State()
     choose_warehouse = State()
     choose_coefficient = State()
+
 
 
 def validate_date(date_text):
@@ -292,6 +294,7 @@ async def delete_booking_task(message: types.Message, state: FSMContext):
     await state.update_data(tasks=tasks, page=0)
     await send_task_page(message, tasks, 0)
 
+
 async def send_task_page(message: types.Message, tasks, page):
     # Рассчитываем начальный и конечный индекс для текущей страницы
     start_index = page * PAGE_SIZE
@@ -300,10 +303,12 @@ async def send_task_page(message: types.Message, tasks, page):
     # Создаем клавиатуру с вариантами задач для удаления
     keyboard = InlineKeyboardMarkup()
     for task in tasks[start_index:end_index]:
+        company = task.get('company', 'Неизвестная компания')
         start_date = task['start_date'].strftime('%Y-%m-%d')
         end_date = task['end_date'].strftime('%Y-%m-%d')
+        warehouse_name = task['warehouse_name']
         keyboard.add(InlineKeyboardButton(
-            f"{start_date} - {end_date} (Склад: {task['warehouse_name']})",
+            f"{company}: {start_date} - {end_date} (Склад: {warehouse_name})",
             callback_data=str(task['_id'])
         ))
 
@@ -352,13 +357,37 @@ async def process_delete_task(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
+
 @dp.message_handler(lambda message: message.text == "Бронь поставки", state="*")
 async def start_booking(message: types.Message):
+    # Создаем клавиатуру для выбора компании
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("MissYourKiss", callback_data='missyourkiss'),
+                 InlineKeyboardButton("Bonasita", callback_data='bonasita'))
+
+    await BookFSM.choose_company.set()
+    await message.answer("Выберите компанию:", reply_markup=keyboard)
+
+
+@dp.callback_query_handler(lambda c: c.data in ['missyourkiss', 'bonasita'], state=BookFSM.choose_company)
+async def process_company_selection(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['company'] = callback_query.data  # Сохраняем выбранную компанию в состояние
+
+    await BookFSM.choose_date_range.set()
+
+    # Переходим к следующему шагу - выбор типа даты
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton("Диапазон дат", callback_data='range'),
                  InlineKeyboardButton("Конкретная дата", callback_data='single'))
-    await BookFSM.choose_date_range.set()
-    await message.answer("Выберите тип даты:", reply_markup=keyboard)
+
+    await bot.edit_message_text(
+        text="Выберите тип даты:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=keyboard
+    )
+    await callback_query.answer()
 
 
 @dp.callback_query_handler(lambda c: c.data in ['range', 'single'], state=BookFSM.choose_date_range)
@@ -368,7 +397,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
     if callback_query.data == 'range':
         await BookFSM.input_start_date.set()
 
-        # Generate inline keyboard with dates for the next 12 days
+        # Генерация клавиатуры с датами для следующего диапазона (12 дней)
         keyboard = InlineKeyboardMarkup(row_width=3)
         current_date = datetime.now()
         for i in range(12):
@@ -385,7 +414,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
     else:
         await BookFSM.input_date.set()
 
-        # Generate inline keyboard with dates for the next 12 days
+        # Генерация клавиатуры с датами для следующего диапазона (14 дней)
         keyboard = InlineKeyboardMarkup(row_width=3)
         current_date = datetime.now()
         for i in range(14):
@@ -456,6 +485,7 @@ def parse_coefficient(coefficient_str):
     # Добавьте другие варианты коэффициентов, если они будут использоваться
     return []
 
+
 @dp.message_handler(content_types=[ContentType.DOCUMENT], state=BookFSM.input_excel)
 async def process_excel(message: types.Message, state: FSMContext):
     document_id = message.document.file_id
@@ -513,34 +543,51 @@ async def process_warehouse(callback_query: types.CallbackQuery, state: FSMConte
 
     # Создаем клавиатуру с вариантами коэффициентов
     coefficient_keyboard = InlineKeyboardMarkup()
-    coefficient_keyboard.add(InlineKeyboardButton("X0-3", callback_data="X0-3"))
+    coefficient_keyboard.add(InlineKeyboardButton("Коэффициент X0-3", callback_data="X0-3"))
 
     await BookFSM.choose_coefficient.set()
     await bot.send_message(callback_query.from_user.id, "Выберите коэффициент:", reply_markup=coefficient_keyboard)
     await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data in ["X0-3"], state=BookFSM.choose_coefficient)
+@dp.callback_query_handler(lambda c: c.data == "X0-3", state=BookFSM.choose_coefficient)
 async def process_coefficient(callback_query: types.CallbackQuery, state: FSMContext):
     coefficient_str = callback_query.data
     coefficient = parse_coefficient(coefficient_str)
 
     async with state.proxy() as data:
         date_type = data['date_type']
+        print(f"Дата тип: {date_type}")
         user_name = data['user_name']
         file_name = data['file_name']
         warehouse_name = data['warehouse_name']
         warehouse_id = data['warehouse_id']
-        print(data)
-        if date_type == "range":
-            start_date, end_date = data['start_date'], data['end_date']
-            start_date = datetime.strptime(start_date.strip(), '%d.%m.%Y')
-            end_date = datetime.strptime(end_date.strip(), '%d.%m.%Y')
-            date_info = f"Тип бронирования: Диапазон\nДата начала: {start_date.strftime('%d.%m.%Y')}\nДата окончания: {end_date.strftime('%d.%m.%Y')}"
-        elif date_type == "single":
-            start_date = end_date = datetime.strptime(data['end_date'].strip(), '%d.%m.%Y')
-            date_info = f"Тип бронирования: Один день\nДата: {start_date.strftime('%d.%m.%Y')}"
+        company = data.get('company')  # Получение компании из состояния
+        print(f"Данные состояния: {data}")
 
+        try:
+            if date_type == "range":
+                start_date_str, end_date_str = data['start_date'], data['end_date']
+                print(f"Начало диапазона (строка): {start_date_str}, Конец диапазона (строка): {end_date_str}")
+
+                # Преобразование строковых дат в объекты datetime
+                start_date = datetime.strptime(start_date_str.strip(), '%d.%m.%Y')
+                end_date = datetime.strptime(end_date_str.strip(), '%d.%m.%Y')
+                print(f"Преобразованные даты: {start_date}, {end_date}")
+
+                date_info = (f"Тип бронирования: Диапазон\nДата начала: {start_date.strftime('%d.%m.%Y')}\n"
+                             f"Дата окончания: {end_date.strftime('%d.%m.%Y')}")
+            elif date_type == "single":
+                date_str = data['end_date'].strip()
+                start_date = end_date = datetime.strptime(date_str, '%d.%m.%Y')
+                print(f"Преобразованная дата: {start_date}")
+
+                date_info = f"Тип бронирования: Один день\nДата: {start_date.strftime('%d.%m.%Y')}"
+
+        except ValueError as e:
+            print(f"Ошибка при обработке даты: {e}")
+            await bot.send_message(callback_query.from_user.id, "Произошла ошибка при обработке дат.")
+            return
 
         task_number = generate_random_number()  # Генерация случайного номера задачи
 
@@ -553,6 +600,7 @@ async def process_coefficient(callback_query: types.CallbackQuery, state: FSMCon
             "warehouse_name": warehouse_name,
             "warehouse_id": warehouse_id,
             "coefficient": coefficient,  # Добавление коэффициента в задачу
+            "company": company,  # Добавление компании в задачу
             "status": "В процессе",
             "supply_id": 0
         }
@@ -562,7 +610,8 @@ async def process_coefficient(callback_query: types.CallbackQuery, state: FSMCon
         print(f"Задача создана: {task}")
 
         await bot.edit_message_text(
-            text=f"Задача на бронирование создана.\nНомер задачи: {task_number}\n{date_info}\nСклад: {warehouse_name}\nКоэффициент: {coefficient}",
+            text=(f"Задача на бронирование создана.\nНомер задачи: {task_number}\n"
+                  f"{date_info}\nСклад: {warehouse_name}\nКоэффициент: {coefficient}\nКомпания: {company}"),
             chat_id=callback_query.from_user.id,
             message_id=callback_query.message.message_id
         )
@@ -577,14 +626,15 @@ async def notify_users(message, user_ids):
 
 
 async def send_booking_info():
-    successful_bookings, errors = await book_wh()
-    for booking in successful_bookings:
-        message = f"Поставка {booking['supply_id']} создана. Дата: {booking['date_range']}. {booking['warehouse_name']}."
-        await notify_users(message, booking['user_ids'])
+    for company in ['missyourkiss', 'bonasita']:
+        successful_bookings, errors = await book_wh(company)
+        for booking in successful_bookings:
+            message = f"Поставка {booking['supply_id']} создана. Дата: {booking['date_range']}. {booking['warehouse_name']}."
+            await notify_users(message, booking['user_ids'])
 
-    if errors:
-        for error in errors:
-            await bot.send_message(615742233, error, parse_mode=ParseMode.HTML)
+        if errors:
+            for error in errors:
+                await bot.send_message(615742233, error, parse_mode=ParseMode.HTML)
 
 
 dp.middleware.setup(LoggingMiddleware())

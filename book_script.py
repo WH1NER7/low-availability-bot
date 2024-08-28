@@ -12,6 +12,7 @@ db = client.low_limits_bot
 collection = db.book_tasks
 
 cookie = os.getenv('COOKIE')
+cookie_bon = os.getenv('COOKIE_BON')
 
 user_ids_whs = [615742233, 1080039077, 5498524004, 6699748340, 6365718854]
 error_notify_user_id = 615742233
@@ -41,8 +42,8 @@ def get_acceptance_coefficients():
     return response.json()
 
 
-def get_tasks_from_mongo():
-    tasks = list(collection.find({"status": "В процессе"}))
+def get_tasks_from_mongo(company):
+    tasks = list(collection.find({"status": "В процессе", "company": company}))
     return tasks
 
 
@@ -53,7 +54,7 @@ def parse_date(date_str):
         return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").date()
 
 
-def check_warehouses(tasks, report):
+def check_warehouses(tasks, report, company):
     matched_tasks = []
     for task in tasks:
         warehouse_id = task['warehouse_id']
@@ -68,7 +69,7 @@ def check_warehouses(tasks, report):
             start_date = start_date.date()
 
         if isinstance(end_date, dict):
-            end_date = datetime.strptime(end_date['$date'], "%Y-%m-%dT%H:%M:%S.%fZ").date()
+            end_date = datetime.strptime(end_date['$date'], "%Y-%м-%dT%H:%M:%S.%fZ").date()
         else:
             end_date = end_date.date()
 
@@ -85,7 +86,7 @@ def check_warehouses(tasks, report):
                         single_date == entry_date):
                     task_with_date = {
                         "_id": task['_id'],
-                        "date": single_date.strftime("%Y-%m-%dT00:00:00Z"),
+                        "date": single_date.strftime("%Y-%м-%dT00:00:00Z"),
                         "warehouse_id": warehouse_id,
                         "file_name": file_name
                     }
@@ -95,6 +96,7 @@ def check_warehouses(tasks, report):
                 continue
             break
     return matched_tasks
+
 
 
 def update_task_status(collection):
@@ -111,7 +113,7 @@ def update_task_status(collection):
             collection.update_one({"_id": task['_id']}, {"$set": {"status": "Провалено"}})
 
 
-async def book_wh():
+async def book_wh(company):
     successful_bookings = []
     errors = []
 
@@ -122,16 +124,25 @@ async def book_wh():
 
         try:
             report = get_acceptance_coefficients()
-            # print(report)
             update_task_status(collection)
-            tasks = get_tasks_from_mongo()
-            matched_tasks = check_warehouses(tasks, report)
+            tasks = get_tasks_from_mongo(company)  # Передаем компанию, чтобы фильтровать задачи
+            matched_tasks = check_warehouses(tasks, report, company)
+
+            # Выбор cookie в зависимости от компании
+            if company == 'missyourkiss':
+                current_cookie = cookie
+            elif company == 'bonasita':
+                current_cookie = cookie_bon
+            else:
+                raise ValueError("Неизвестная компания")
 
             for task in matched_tasks:
                 try:
-                    print(f"Processing task: {task}")
-                    supply_status, supply_id = await asyncio.to_thread(process_supply, task.get('date'), task.get('warehouse_id'),
-                                                                       task.get('file_name'), cookie)
+                    print(f"Processing task for company {company}: {task}")
+                    supply_status, supply_id = await asyncio.to_thread(
+                        process_supply, task.get('date'), task.get('warehouse_id'),
+                        task.get('file_name'), current_cookie
+                    )
                     if supply_status:
                         print(f"Supply status successful for task: {task}")
                         task_details = collection.find_one({"_id": task['_id']})
@@ -164,16 +175,16 @@ async def book_wh():
                     else:
                         print(f"Booking failed for task: {task}")
                 except Exception as e:
-                    error_message = f"Booking failed for task {task}: {e}"
+                    error_message = f"Booking failed for task {task} (company: {company}): {e}"
                     errors.append(error_message)
                     print(error_message)
 
                 # Добавляем асинхронную задержку между задачами
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.1)
 
         except Exception as e:
-            errors.append(f"Failed to complete booking process: {e}")
-            print(f"Failed to complete booking process: {e}")
+            errors.append(f"Failed to complete booking process for {company}: {e}")
+            print(f"Failed to complete booking process for {company}: {e}")
 
     return successful_bookings, errors
 
