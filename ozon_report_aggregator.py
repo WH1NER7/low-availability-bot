@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
-from datetime import datetime
+from datetime import datetime, timedelta
 import aiohttp
 import asyncio
 
@@ -19,6 +19,7 @@ class OzonReportAggregator:
                 return await resp.json()
 
     def get_report_data(self, date_from, date_to):
+        print(date_from, date_to)
         url = self.base_url
 
         headers = {
@@ -74,8 +75,20 @@ class OzonReportAggregator:
         date_start_formatted = date_start_strp.strftime('%Y-%m-%d')
         date_end_formatted = date_end_strp.strftime('%Y-%m-%d')
 
-        # Получение данных из API
-        data = self.get_report_data(date_start_formatted, date_end_formatted)
+        # Определение предыдущего периода
+        period_length = (date_end_strp - date_start_strp).days + 1
+        previous_period_start = date_start_strp - timedelta(days=period_length)
+        previous_period_end = date_start_strp - timedelta(days=1)
+
+        previous_period_start_formatted = previous_period_start.strftime('%Y-%m-%d')
+        previous_period_end_formatted = previous_period_end.strftime('%Y-%m-%d')
+
+        # Получение данных для обоих периодов
+        data_current = self.get_report_data(date_start_formatted, date_end_formatted)
+        data_previous = self.get_report_data(previous_period_start_formatted, previous_period_end_formatted)
+
+        # Объединение данных обоих периодов
+        data = data_current + data_previous
 
         if not data:
             raise ValueError("Нет данных за указанный период")
@@ -101,20 +114,16 @@ class OzonReportAggregator:
 
         # Преобразование столбца с датами в datetime
         df['Date'] = pd.to_datetime(df['Date'])
-        print("Данные после преобразования дат:", df.head())
 
-        # Получение уникальных дат и проверка их кратности двум
-        unique_dates = df['Date'].unique()
-        if len(unique_dates) < 2:
-            raise ValueError("Выбранный период слишком короткий для сравнения")
+        # Фильтрация данных по текущему и предыдущему периодам
+        current_period_dates = pd.date_range(start=date_start_strp, end=date_end_strp)
+        previous_period_dates = pd.date_range(start=previous_period_start, end=previous_period_end)
 
-        # Определение текущего периода и предыдущего периода
-        midpoint = len(unique_dates) // 2
-        current_period_dates = unique_dates[midpoint:]
-        previous_period_dates = unique_dates[:midpoint]
+        df_current = df[df['Date'].isin(current_period_dates)]
+        df_previous = df[df['Date'].isin(previous_period_dates)]
 
-        current_period_str = f"{current_period_dates.min().strftime('%d.%m')}-{current_period_dates.max().strftime('%d.%m')}"
-        previous_period_str = f"{previous_period_dates.min().strftime('%d.%m')}-{previous_period_dates.max().strftime('%d.%m')}"
+        current_period_str = f"{date_start_strp.strftime('%d.%m')}-{date_end_strp.strftime('%d.%m')}"
+        previous_period_str = f"{previous_period_start.strftime('%d.%m')}-{previous_period_end.strftime('%d.%m')}"
 
         print(f"Текущий период: {current_period_str}, Предыдущий период: {previous_period_str}")
 
@@ -130,6 +139,7 @@ class OzonReportAggregator:
         # Агрегация данных по двум периодам
         current_period_aggregated = aggregate_data(df, current_period_dates)
         previous_period_aggregated = aggregate_data(df, previous_period_dates)
+
         print("Агрегированные данные текущего периода:", current_period_aggregated.head())
         print("Агрегированные данные предыдущего периода:", previous_period_aggregated.head())
 
@@ -139,8 +149,12 @@ class OzonReportAggregator:
         current_period_total_deliveries = current_period_aggregated['delivered_units'].sum()
         previous_period_total_deliveries = previous_period_aggregated['delivered_units'].sum()
 
-        print(f"Текущий период ({current_period_str}) - Заказы: {current_period_total_orders}, Выкупы: {current_period_total_deliveries}")
-        print(f"Предыдущий период ({previous_period_str}) - Заказы: {previous_period_total_orders}, Выкупы: {previous_period_total_deliveries}")
+        print(
+            f"Текущий период ({current_period_str}) - Заказы: {current_period_total_orders}, Выкупы: {current_period_total_deliveries}")
+        print(
+            f"Предыдущий период ({previous_period_str}) - Заказы: {previous_period_total_orders}, Выкупы: {previous_period_total_deliveries}")
+
+        # Продолжение обработки данных...
 
         # Переименуем столбцы для ясности
         current_period_aggregated.columns = ['SKU', 'ordered_units_current', 'delivered_units_current']

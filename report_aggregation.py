@@ -130,7 +130,7 @@ class ReportAggregator:
         green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
 
         # Применение заливки для процентного отклонения заказов
-        for row in ws.iter_rows(min_row=2, min_col=8, max_col=8, max_row=ws.max_row):
+        for row in ws.iter_rows(min_row=2, min_col=10, max_col=10, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill
@@ -138,7 +138,7 @@ class ReportAggregator:
                     cell.fill = red_fill
 
         # Применение заливки для процентного отклонения выкупов
-        for row in ws.iter_rows(min_row=2, min_col=12, max_col=12, max_row=ws.max_row):
+        for row in ws.iter_rows(min_row=2, min_col=14, max_col=14, max_row=ws.max_row):
             for cell in row:
                 if cell.value > 0:
                     cell.fill = green_fill
