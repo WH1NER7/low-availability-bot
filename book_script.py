@@ -69,7 +69,7 @@ def check_warehouses(tasks, report, company):
             start_date = start_date.date()
 
         if isinstance(end_date, dict):
-            end_date = datetime.strptime(end_date['$date'], "%Y-%м-%dT%H:%M:%S.%fZ").date()
+            end_date = datetime.strptime(end_date['$date'], "%Y-%m-%dT%H:%M:%S.%fZ").date()
         else:
             end_date = end_date.date()
 
@@ -86,7 +86,7 @@ def check_warehouses(tasks, report, company):
                         single_date == entry_date):
                     task_with_date = {
                         "_id": task['_id'],
-                        "date": single_date.strftime("%Y-%м-%dT00:00:00Z"),
+                        "date": single_date.strftime("%Y-%m-%dT00:00:00Z"),
                         "warehouse_id": warehouse_id,
                         "file_name": file_name
                     }
