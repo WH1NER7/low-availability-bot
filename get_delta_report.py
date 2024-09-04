@@ -14,6 +14,8 @@ class ReportDownloader:
         self.check_report_url = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads"
         self.download_report_url = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads/file/{}"
         self.headers = {
+            "Accept-Encoding": "gzip, deflate, br",
+            "User-Agent": "PostmanRuntime/7.28.4",
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self.api_key}'
         }

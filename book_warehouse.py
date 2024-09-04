@@ -155,6 +155,7 @@ def add_many_plan(session, headers, deliveryDate, preOrderId, warehouseID):
          "supplierAssignUUID": None}]}, "jsonrpc": "2.0", "id": "json-rpc_85"}
     response = session.post(url, headers=headers, json=payload)
     if response.status_code == 200:
+        print(response.content)
         return response.json().get('result').get('out')[0].get('result').get('supplyId')
     else:
         log_error("Не удалось записать данные водителя", response.status_code, payload)
@@ -166,6 +167,7 @@ def create_box_barcodes(session, headers, supplyId, barcodeNumber):
     payload = {"params": {"supplyId": supplyId, "barcodeNumber": barcodeNumber}, "jsonrpc": "2.0", "id": "json-rpc_224"}
     response = session.post(url, headers=headers, json=payload)
     if response.status_code == 200:
+        print(response.content)
         return response.json().get('result').get('barcodes')
     else:
         log_error("Ошибка при создании баркодов", response.status_code, payload)
@@ -201,7 +203,7 @@ def set_trn_details(session, headers, barcodeId, supplyId, number):
     payload = {"params": {"barcodeId": barcodeId, "boxTypeName": "box", "barcodePrefix": "WB-GI-", "firstName": "Тест ",
                           "lastName": "Тест", "carModel": "Фольсваген Кэдди", "carNumber": "P181PB116",
                           "supplyId": supplyId,
-                          "number": number, "supplierAssignUUID": None, "phone": "71111111111"}, "jsonrpc": "2.0",
+                          "number": number, "supplierAssignUUID": None, "phone": "79512428781"}, "jsonrpc": "2.0",
                "id": "json-rpc_50"}
     response = session.post(url, headers=headers, json=payload)
     if response.status_code == 200:
@@ -217,6 +219,8 @@ def process_supply(date, warehouseID, excel_file_path, cookie):
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Cookie': cookie,
+        "Accept-Encoding": "gzip, deflate, br",
+        "User-Agent": "PostmanRuntime/7.28.4",
     }
 
     # Инициализация сессии
@@ -227,6 +231,7 @@ def process_supply(date, warehouseID, excel_file_path, cookie):
 
     # Создание черновика и загрузка товаров из Excel
     draftID = create_draft(session, headers)  # api/v1/draft/create
+
     encoded_xls = encode_excel_to_base64(excel_file_path)
     upload_goods_from_xls(session, headers, draftID, encoded_xls)  # api/v1/draft/goodsFromXLS
 
@@ -251,3 +256,6 @@ def process_supply(date, warehouseID, excel_file_path, cookie):
     number = barcodeNumber
     supply_status = set_trn_details(session, headers, barcodeId, supplyId, number)  # /api/v1/barcode/setTRNDetails
     return supply_status, supplyId
+
+# cookie2 = "_wbauid=9110205211698128745; ___wbu=12ae082d-b28d-44c4-b9ac-493a84ce6307.1698128748; BasketUID=dd4dccdf3ec848f1949710a632e14fea; external-locale=ru; wbx-validation-key=bead8ca0-c64d-4cf1-b194-064ea8a49f38; device_id_guru=18e08cd3ada-41b0c8de0fc5a13f; client_ip_guru=5.167.249.195; _ym_uid=1709544651663368814; _ym_d=1709544651; adult-content-wbguide=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJTaG93QWR1bHQiOmZhbHNlLCJleHAiOjE3NDEwODA2NTJ9; wb-pid=gYEi7-d4psdDu4SAR2a89L1RAAABjuvofstFpAHsjrlZFD_1YSM-9t8vaAmbNWVqUyA2s6hphGRW6A; x-supplier-id=3117fcc2-af08-5e08-835d-8a036116acd0; x-supplier-id-external=3117fcc2-af08-5e08-835d-8a036116acd0; current_feature_version=CB53E11B-0E2D-4EA0-A8AD-76385928A81D; wb-sid=b48ed8ac-3e39-4ce3-b35f-f639a28debfa; wb-id=gYGQNfBlk-5BZI_H-5vrMJKRAAABkbglm8r8wqlV4VByoKUNHH_14pkeiD4X5TlVUjQV0-PoX3RL1mI0OGVkOGFjLTNlMzktNGNlMy1iMzVmLWY2MzlhMjhkZWJmYQ; WBTokenV3=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MjUzNzEzODUsInZlcnNpb24iOjIsInVzZXIiOiI1MTI1MDU4MiIsInNoYXJkX2tleSI6IjEwIiwiY2xpZW50X2lkIjoic2VsbGVyLXBvcnRhbCIsInNlc3Npb25faWQiOiIwNTRkNDViOGNiM2Q0NmVkOTM1YTRhMTliMzczMTcyNyIsInVzZXJfcmVnaXN0cmF0aW9uX2R0IjoxNjc3Nzc1MzY4LCJ2YWxpZGF0aW9uX2tleSI6ImVlYzkwZjA1ZjM2NzFjNDdjYTg5YzJhZWMwMWMyODZkYjUyOTU5MGQ2ZjZlYWQ5MzQ0NWYzNTE4ZGY0NWViYjgiLCJwaG9uZSI6IiJ9.CpOi2WqKNoZTfLhtz08nThYqQakOlu01Zjo4y9oCzYaJvZGUgxR2-zPxcka01keFPib1rdn2OBfbCDmXbgOkmyMXa_oFYR9O5r0QaRe0PPXbIat1szZvGDA1kUMa1jD6_p9aaDKw-wcDAOh89ivj77DQViFez362Gbu2ZdDTvuIlkWGi1FF0dSBPwIsge-EK3iE0oXwZJBdmC2NzLzyD4CxZTpK2zudu8xHpPZ4aOKy3Us5Jt5QDOZxquOXGITtkKx7bUmlTv4WecCgHJ0rruhHRrftwLR_yURfoQ3ZwBaRbDZMz-7LhlUu9hAtLH2WRDjsQB1UDbfhu0YVQcJEw5Q; locale=ru; __zzatw-wb=MDA0dC0cTHtmcDhhDHEWTT17CT4VHThHKHIzd2UuPGciX0xhITVRP0FaW1Q4NmdBEXUmCQg3LGBwVxlRExpceEdXeiwbFnpyJFN/DVw/RWllbQwtUlFRS19/Dg4/aU5ZQ11wS3E6EmBWGB5CWgtMeFtLKRZHGzJhXkZpdRVPDA8XQUYne1xtaFFjTRZTTFhSMilKEgglJlYKDGI/SF9vG3siXyoIJGM1Xz9EaVhTMCpYQXt1J3Z+KmUzPGwfZEpgIEdVT3onHg1pN2wXPHVlLwkxLGJ5MVIvE0tsP0caRFpbQDsyVghDQE1HFF9BWncyUlFRS2EQR0lrZU5TQixmG3EVTQgNND1aciIPWzklWAgSPwsmIBN8bipQCwtdPkNzbxt/Nl0cOWMRCxl+OmNdRkc3FSR7dSYKCTU3YnAvTCB7SykWRxsyYV5GaXUVUggMYnN0KHUmbCMdZ0ReVENdSgkoHkV0c1RPChFcPkcmLl07VxlRDxZhDhYYRRcje0I3Yhk4QhgvPV8/YngiD2lIYCFIWFR6KRkTfGwqS3FPLH12X30beylOIA0lVBMhP05yOxnSJg==; __zzatw-wb=MDA0dC0cTHtmcDhhDHEWTT17CT4VHThHKHIzd2UuPGciX0xhITVRP0FaW1Q4NmdBEXUmCQg3LGBwVxlRExpceEdXeiwbFnpyJFN/DVw/RWllbQwtUlFRS19/Dg4/aU5ZQ11wS3E6EmBWGB5CWgtMeFtLKRZHGzJhXkZpdRVPDA8XQUYne1xtaFFjTRZTTFhSMilKEgglJlYKDGI/SF9vG3siXyoIJGM1Xz9EaVhTMCpYQXt1J3Z+KmUzPGwfZEpgIEdVT3onHg1pN2wXPHVlLwkxLGJ5MVIvE0tsP0caRFpbQDsyVghDQE1HFF9BWncyUlFRS2EQR0lrZU5TQixmG3EVTQgNND1aciIPWzklWAgSPwsmIBN8bipQCwtdPkNzbxt/Nl0cOWMRCxl+OmNdRkc3FSR7dSYKCTU3YnAvTCB7SykWRxsyYV5GaXUVUggMYnN0KHUmbCMdZ0ReVENdSgkoHkV0c1RPChFcPkcmLl07VxlRDxZhDhYYRRcje0I3Yhk4QhgvPV8/YngiD2lIYCFIWFR6KRkTfGwqS3FPLH12X30beylOIA0lVBMhP05yOxnSJg==; cfidsw-wb=vjz4ClLCQhdmym1MDGeZkMY7eVy4RcIaCjkeV5aAp6QNKN1jCaMV1LfjNeoRClqZAYUOoN01cXwN3/wbhesY7DOs8Zxnbb8Ty3E6JELbnOQHyAYco+vIlLKhQCNz5Hh2deKsrRHyLFrATVqyoTroYV9QvQPFYRCDsPdJbKp2Pw==; cfidsw-wb=vjz4ClLCQhdmym1MDGeZkMY7eVy4RcIaCjkeV5aAp6QNKN1jCaMV1LfjNeoRClqZAYUOoN01cXwN3/wbhesY7DOs8Zxnbb8Ty3E6JELbnOQHyAYco+vIlLKhQCNz5Hh2deKsrRHyLFrATVqyoTroYV9QvQPFYRCDsPdJbKp2Pw=="
+# process_supply("2024-09-10T00:00:00Z", 1733, "test_book.xlsx", cookie2)

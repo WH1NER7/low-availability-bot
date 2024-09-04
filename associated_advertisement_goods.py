@@ -58,6 +58,7 @@ def get_advert_statistics(company_api_key, api_key, authorizev3, cookie, user_ag
     print(start_date, end_date)
     url = f"https://cmp.wildberries.ru/api/v5/fullstat?advertID={advert_id}&from={start_date}&to={end_date}&appType=0&placementType=0"
     headers = {
+        "Accept-Encoding": "gzip, deflate, br",
         "Authorizev3": authorizev3,
         "Cookie": cookie,
         "User-Agent": user_agent
@@ -191,6 +192,7 @@ def collect_data(company_api_key, api_key, start_date, end_date, authorizev3, co
 def get_campaign_name(authorizev3, cookie, user_agent, advert_id):
     url = f"https://cmp.wildberries.ru/api/v1/atrevd?advert-id={advert_id}"
     headers = {
+        "Accept-Encoding": "gzip, deflate, br",
         "Authorizev3": authorizev3,
         "Cookie": cookie,
         "User-Agent": user_agent

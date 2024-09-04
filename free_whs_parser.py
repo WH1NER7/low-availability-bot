@@ -24,6 +24,8 @@ def send_request():
     cookie = API_TOKEN = os.getenv('COOKIE')
     url = "https://seller-supply.wildberries.ru/ns/sm-supply/supply-manager/api/v1/supply/acceptanceCoefficientsReport"
     headers = {
+        "Accept-Encoding": "gzip, deflate, br",
+        "User-Agent": "PostmanRuntime/7.28.4",
         'Content-Type': 'application/json',
         'Cookie': cookie
     }
