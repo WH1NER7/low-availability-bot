@@ -95,13 +95,14 @@ def pivot_table_by_region(file_path):
 
 def fetch_warehouse_ids(warehouse_names):
     url = "https://seller-supply.wildberries.ru/ns/sm-supply/supply-manager/api/v1/supply/acceptanceCoefficientsReport"
+
     headers = {"Accept-Encoding": "gzip, deflate, br",
                "User-Agent": "PostmanRuntime/7.28.4",
                'Cookie': cookie
                }
     body = {
         "params": {
-            "dateTo": "2024-08-26T19:00:00.000Z",
+            "dateTo": "2024-09-15T19:00:00.000Z",
             "dateFrom": "2024-09-03T14:26:30.572Z"
         },
         "jsonrpc": "2.0",
@@ -111,7 +112,7 @@ def fetch_warehouse_ids(warehouse_names):
     response = requests.post(url, headers=headers, json=body)
     print(response.status_code)
     data = response.json()
-
+    print(data)
     results = data.get("result", {}).get("report", [])
 
     unique_warehouses = {}  # Используем словарь для исключения дубликатов
