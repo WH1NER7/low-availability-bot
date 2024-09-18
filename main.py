@@ -24,9 +24,9 @@ from bson import ObjectId
 from pymongo import MongoClient
 import openpyxl
 
-
 from book_script import book_wh
 from book_warehouse import COLOR_ORDER
+from database import get_unsent_reports, mark_report_as_sent
 from free_whs_parser import send_request
 from get_delta_report import ReportDownloader
 from handlers import send_data
@@ -37,7 +37,7 @@ from report_aggregation import ReportAggregator
 import pandas as pd
 from collections import defaultdict
 
-
+from report_checker import main_report_checker
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 cookie = os.getenv('COOKIE')
@@ -110,9 +110,9 @@ def fetch_warehouse_ids(warehouse_names):
     }
 
     response = requests.post(url, headers=headers, json=body)
-    print(response.status_code)
+
     data = response.json()
-    print(data)
+
     results = data.get("result", {}).get("report", [])
 
     unique_warehouses = {}  # Используем словарь для исключения дубликатов
@@ -201,10 +201,13 @@ async def on_start(message: types.Message):
     # Создание клавиатуры в зависимости от user_id
     if user_id in user_ids_whs and user_id in user_ids_extra:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Сплит WB"), types.KeyboardButton("Ассоц товары"))
+        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"),
+                     types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Сплит WB"),
+                     types.KeyboardButton("Ассоц товары"))
     elif user_id in user_ids_whs:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"), types.KeyboardButton("Сплит WB"))
+        keyboard.add(types.KeyboardButton("Бронь поставки"), types.KeyboardButton("Удалить задачу на поставку"),
+                     types.KeyboardButton("Сплит WB"))
     elif user_id in user_ids_extra:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(types.KeyboardButton("Дельта отчет"), types.KeyboardButton("Ассоц товары"))
@@ -221,7 +224,6 @@ class BookFSM(StatesGroup):
     input_excel = State()
     choose_warehouse = State()
     choose_coefficient = State()
-
 
 
 def validate_date(date_text):
@@ -278,6 +280,7 @@ def generate_random_number():
 
 PAGE_SIZE = 10
 
+
 @dp.message_handler(lambda message: message.text == "Удалить задачу на поставку", state="*")
 async def delete_booking_task(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -325,6 +328,7 @@ async def send_task_page(message: types.Message, tasks, page):
     # Отправляем сообщение с клавиатурой
     await message.answer("Выберите задачу для удаления:", reply_markup=keyboard)
 
+
 @dp.callback_query_handler(lambda call: call.data in ["prev_page", "next_page"])
 async def paginate_tasks(call: types.CallbackQuery, state: FSMContext):
     # Получаем данные из состояния
@@ -359,7 +363,6 @@ async def process_delete_task(callback_query: types.CallbackQuery):
         await bot.send_message(callback_query.from_user.id, "Задача не найдена.")
 
     await callback_query.answer()
-
 
 
 @dp.message_handler(lambda message: message.text == "Бронь поставки", state="*")
@@ -665,6 +668,7 @@ async def choose_platform(message: types.Message):
         reply_markup=keyboard
     )
 
+
 @dp.callback_query_handler(lambda c: c.data in ['wb', 'ozon'], state=DeltaFSM.choose_platform)
 async def process_platform(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
@@ -684,6 +688,7 @@ async def process_platform(callback_query: types.CallbackQuery, state: FSMContex
         reply_markup=keyboard
     )
     await callback_query.answer()
+
 
 @dp.callback_query_handler(lambda c: c.data in ['range1', '7', '3'], state=DeltaFSM.choose_date_range)
 async def process_date_type(callback_query: types.CallbackQuery, state: FSMContext):
@@ -714,6 +719,7 @@ async def process_date_type(callback_query: types.CallbackQuery, state: FSMConte
             reply_markup=keyboard
         )
     await callback_query.answer()
+
 
 async def show_start_date_keyboard(callback_query, state, month):
     async with state.proxy() as data:
@@ -747,6 +753,7 @@ async def show_start_date_keyboard(callback_query, state, month):
         reply_markup=keyboard
     )
 
+
 @dp.callback_query_handler(lambda c: c.data in ['prev_month', 'next_month'], state=DeltaFSM.input_start_date)
 async def navigate_month(callback_query: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
@@ -760,6 +767,7 @@ async def navigate_month(callback_query: types.CallbackQuery, state: FSMContext)
 
     await show_start_date_keyboard(callback_query, state, new_month)
     await callback_query.answer()
+
 
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_start_date)
 async def process_start_date(callback_query: types.CallbackQuery, state: FSMContext):
@@ -793,6 +801,7 @@ async def process_start_date(callback_query: types.CallbackQuery, state: FSMCont
         reply_markup=keyboard
     )
     await callback_query.answer()
+
 
 @dp.callback_query_handler(lambda c: c.data, state=DeltaFSM.input_end_date)
 async def process_end_date(callback_query: types.CallbackQuery, state: FSMContext):
@@ -844,7 +853,6 @@ async def process_threshold(callback_query: types.CallbackQuery, state: FSMConte
 
     await state.finish()
     await callback_query.answer()
-
 
 
 async def process_wb_report(callback_query, state, api_key, myk_api_key, report_dir, start_date, end_date, threshold):
@@ -923,6 +931,7 @@ async def process_ozon_report(callback_query, state, client_id, api_key, report_
 async def request_file(message: types.Message):
     await message.reply("Пожалуйста, загрузите Excel файл для сплита по регионам.")
 
+
 @dp.message_handler(content_types=[types.ContentType.DOCUMENT])
 async def handle_document(message: types.Message):
     document = message.document
@@ -951,17 +960,63 @@ async def send_welcome(message: types.Message):
     task = async_task_test.delay(5, 7)  # Вызов асинхронной задачи
     await message.reply(f"Задача отправлена! Результат будет {task.get()}")
 
+
+async def send_report_via_telegram(report_path, chat_id):
+    """
+    Отправка отчета через Telegram в указанный чат.
+    """
+    try:
+        # Проверяем, существует ли файл перед отправкой
+        if not os.path.exists(report_path):
+            print(f"Файл {report_path} не существует.")
+            return
+
+        # Открываем файл для отправки
+        file = InputFile(report_path)
+        await bot.send_document(chat_id=chat_id, document=file)
+        print(f"Отчет {report_path} успешно отправлен в чат {chat_id}.")
+    except Exception as e:
+        print(f"Ошибка при отправке отчета {report_path} в чат {chat_id}: {e}")
+
+
+async def send_reports_and_acts():
+    """
+    Отправляет все отчеты, у которых 'sent' = False.
+    """
+    unsent_reports = get_unsent_reports()
+
+    for report in unsent_reports:
+        report_path = report.get("file_path")
+        report_id = report.get("report_id")
+
+        if not report_path:
+            print(f"Отчет с ID {report_id} не имеет пути к файлу. Пропуск.")
+            continue
+
+        print(f"Отправляем отчет {report_path} в чаты...")
+
+        # Отправляем отчет каждому из пользователей
+        for chat_id in [615742233, 1080039077, 7025492879, 5420406346, 6090762959]:
+            await send_report_via_telegram(report_path, chat_id)  # Используем await для асинхронного вызова
+
+        # Обновляем статус отчета на "sent"
+        mark_report_as_sent(report_path)
+
+
 def run_bot():
     scheduler.start()
     executor.start_polling(dp, loop=asyncio.get_event_loop())
 
 
 if __name__ == '__main__':
+    scheduler.add_job(send_reports_and_acts, 'interval', hours=2)
     dp.register_message_handler(on_start, commands=['start'])
 
     scheduler.add_job(send_notifications, 'cron', hour=9, minute=0)
     scheduler.add_job(send_notifications, 'cron', hour=14, minute=0)
     scheduler.add_job(send_notifications, 'cron', hour=17, minute=0)
+
+    scheduler.add_job(main_report_checker, 'interval', hours=3)
 
     scheduler.add_job(send_free_whs, 'interval', minutes=3)
     scheduler.add_job(send_booking_info, 'interval', seconds=15)
