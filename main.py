@@ -1019,6 +1019,6 @@ if __name__ == '__main__':
     scheduler.add_job(main_report_checker, 'interval', hours=3)
 
     scheduler.add_job(send_free_whs, 'interval', minutes=3)
-    scheduler.add_job(send_booking_info, 'interval', seconds=15)
+    # scheduler.add_job(send_booking_info, 'interval', seconds=15)
 
     run_bot()
