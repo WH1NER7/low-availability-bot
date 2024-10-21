@@ -82,7 +82,7 @@ def compare_reports(current_report):
                 if current_item["warehouseID"] == previous_item["warehouseID"] and \
                         current_item["date"] == previous_item["date"]:
                     previous_coefficient = previous_item["coefficient"]
-                    if previous_coefficient != 0 and current_coefficient in [0, 1, 2, 3, 4, 5]:
+                    if previous_coefficient not in [0, 1, 2, 3, 4, 5] and current_coefficient in [0, 1, 2, 3, 4, 5]:
                         result_text += "Обнаружено изменение:\n"
                         result_text += f"Дата: {formatted_date}\n"
                         result_text += f"ID Склада: {current_warehouse_id}\n"
